@@ -6,7 +6,9 @@ import numpy as np
 def perform_acquisition(model, acquisition_function,
                         X_train, y_train, X_pool, y_pool,
                         n_samples_to_acquire=10):
-    idx = acquisition_function(model, X_pool, n_samples_to_acquire=n_samples_to_acquire)
+
+    vals = acquisition_function(model, X_pool)
+    idx = torch.topk(vals, n_samples_to_acquire).indices
 
     chosen_X_pool = X_pool[idx]
     chosen_y_pool = y_pool[idx]
@@ -20,7 +22,9 @@ def perform_acquisition(model, acquisition_function,
     return new_X_train, new_y_train, new_X_pool, new_y_pool
 
 
-def random(model, X_pool, n_samples_to_acquire=10):
-    idx = np.random.choice(range(len(X_pool)), size=n_samples_to_acquire, replace=False)
-    idx = torch.from_numpy(idx)
-    return idx
+def random(model, X_pool):
+    vals = torch.rand(X_pool.shape[0])
+    return vals
+
+def bald(mode, X_pool):
+    pass

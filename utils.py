@@ -15,7 +15,6 @@ from matplotlib import pyplot as plt
 from networks import LeNet
 from acquisition_functions import perform_acquisition
 
-
 TRAIN_SIZE = 20
 VAL_SIZE = 100
 POOL_SIZE = 60_000 - (TRAIN_SIZE + VAL_SIZE)
@@ -23,6 +22,7 @@ POOL_SIZE = 60_000 - (TRAIN_SIZE + VAL_SIZE)
 DATA_PATH = '/Users/pascalpilz/Documents/Bsc Thesis/data/mnist/'
 MODEL_SAVE_PATH = '/Users/pascalpilz/Documents/Bsc Thesis/models/'
 EXPERIMENT_SAVE_PATH = './Experiment Results/'
+SEED = 1
 
 
 def get_datasets(train_size=TRAIN_SIZE,
@@ -106,20 +106,22 @@ def run_training(model,
                  optimizer,
                  loss_fn,
                  print_at=-1,
-                 n_epochs=5,
+                 n_epochs=100,
                  verbose=False,
-                 early_stopping=10):
+                 early_stopping=10,
+                 model_save_path=MODEL_SAVE_PATH):
+
     # if print_at is -1 then we just print 5 times during training
     if print_at == -1:
         print_at = max(len(train_loader) // 5, 1)
-    save_path = None
-
-    timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
-    model_path = MODEL_SAVE_PATH + str(timestamp) + '/'
-    os.makedirs(model_path, exist_ok=True)
 
     epochs_since_best_vloss = 0
+    best_model_state_dict = model.state_dict()
     best_vloss = np.inf
+
+    os.makedirs(model_save_path, exist_ok=True)
+    model_path = model_save_path + f'trainsize-{len(train_loader.dataset):05d}_'
+    save_path = model_path + f'epoch-####_valloss-{best_vloss:.3f}'
 
     epochs = tqdm(desc=f'Training Epochs with Training size {len(train_loader.dataset)}', leave=False)
     # epochs = tqdm(range(n_epochs), desc=f'Training size {len(train_loader.dataset)}')
@@ -151,8 +153,8 @@ def run_training(model,
         if avg_vloss < best_vloss:
             epochs_since_best_vloss = 0
             best_vloss = avg_vloss
-            save_path = model_path + f'model_{timestamp}_{epoch}'
-            torch.save(model.state_dict(), save_path)
+            save_path = model_path + f'epoch-{epoch:04d}_valloss-{best_vloss:.3f}'
+            best_model_state_dict = model.state_dict()
         else:
             epochs_since_best_vloss += 1
             if epochs_since_best_vloss == early_stopping:
@@ -162,6 +164,9 @@ def run_training(model,
 
         epochs.update()
     epochs.close()
+
+    torch.save(best_model_state_dict, save_path)
+
     if verbose:
         print('Done.')
     return save_path
@@ -173,10 +178,10 @@ def get_accuracy(model, dataloader):
     predications = []
 
     for i, (inputs, labels) in enumerate(dataloader):
-        toutputs = model(inputs)
-        toutputs = torch.argmax(toutputs, dim=1)
-        running_corrects += torch.sum(torch.Tensor(toutputs == labels.data))
-        predications += toutputs.tolist()
+        outputs = model(inputs)
+        outputs = torch.argmax(outputs, dim=1)
+        running_corrects += torch.sum(torch.Tensor(outputs == labels.data))
+        predications += outputs.tolist()
 
     acc = running_corrects.float() / (len(dataloader) * 4)
 
@@ -185,17 +190,18 @@ def get_accuracy(model, dataloader):
 
 def run_active_learning(X_train, y_train, X_pool, y_pool, val_loader, test_loader,
                         acquisition_function, n_acquisition_steps=100, n_samples_to_acquire=10,
-                        n_epochs=100, verbose=False, training_verbose=False):
+                        n_epochs=100, verbose=False, training_verbose=False, model_save_path=MODEL_SAVE_PATH):
     running_X_train = X_train
     running_y_train = y_train
 
     running_X_pool = X_pool
     running_y_pool = y_pool
 
-    results = {'acq step': [], 'train size': [], 'acc': []}
+    # we only return the test accuracies
+    # we need n_acquisition_steps+1 since the first iteration does not do an acquisition step
+    results = torch.zeros(n_acquisition_steps+1)
 
-    # do 50 acquisition steps
-    for i in tqdm(range(n_acquisition_steps), desc='Acquisition Steps', leave=False):
+    for i in tqdm(range(n_acquisition_steps+1), desc='Acquisition Steps', leave=False):
 
         net = LeNet()
         optimizer = torch.optim.SGD(net.parameters(), lr=0.001, momentum=0.9)
@@ -204,22 +210,23 @@ def run_active_learning(X_train, y_train, X_pool, y_pool, val_loader, test_loade
         running_train_set = torch.utils.data.TensorDataset(running_X_train, running_y_train)
         running_train_loader = torch.utils.data.DataLoader(running_train_set, batch_size=4, shuffle=True)
 
+        training_model_save_path = (model_save_path
+                                    + f'{acquisition_function.__name__}/')
         path = run_training(net,
                             train_loader=running_train_loader,
                             val_loader=val_loader,
                             optimizer=optimizer,
                             loss_fn=loss_fn,
                             n_epochs=n_epochs,
+                            verbose=training_verbose,
                             early_stopping=10,
-                            verbose=training_verbose)
+                            model_save_path=training_model_save_path)
 
         # loading the model with the lowest val loss to get accuracy on test set
         best_model = LeNet()
         best_model.load_state_dict(torch.load(path, weights_only=True))
         acc = get_accuracy(best_model, test_loader)
-        results['acq step'].append(i)
-        results['train size'].append(running_X_train.shape[0])
-        results['acc'].append(acc)
+        results[i] = acc
 
         if verbose:
             print('\n' + '=' * 75)
@@ -232,8 +239,68 @@ def run_active_learning(X_train, y_train, X_pool, y_pool, val_loader, test_loade
                                   X_train=running_X_train, y_train=running_y_train, X_pool=running_X_pool,
                                   y_pool=running_y_pool)
 
-    results = {key: torch.Tensor(val) for key, val in results.items()}
     return results
+
+
+def run_experiments(experiments, n_runs=3, seed=SEED, model_save_path=MODEL_SAVE_PATH, show_dataset=False):
+
+    exp_id = datetime.now().strftime('%Y%m%d_%H%M%S')
+
+    for experiment in tqdm(experiments, desc='Experiments'):
+
+        # we need +1 since for the first iteration we don't have an acquisition step yet
+        n_acq_steps = experiment['n_acquisition_steps'] + 1
+        # for each experiment we perform three runs and average the results
+        runs = torch.zeros((n_runs, n_acq_steps))
+
+        torch.manual_seed(seed)
+        np.random.seed(seed)
+
+        for i in tqdm(range(n_runs), desc='Runs per Experiment', leave=False):
+
+            # get dataset new for each ru, such that train and pool is shuffled newly
+            X_train, y_train, X_pool, y_pool, X_val, y_val, X_test, y_test = get_datasets()
+            if show_dataset:
+                visualise_datasets(X_train, y_train, X_pool, y_pool, X_val, y_val, X_test, y_test)
+
+            # get val and test set and loader, these stay constant
+            val_set = torch.utils.data.TensorDataset(X_val, y_val)
+            test_set = torch.utils.data.TensorDataset(X_test, y_test)
+            val_loader = torch.utils.data.DataLoader(val_set, batch_size=4, shuffle=True)
+            test_loader = torch.utils.data.DataLoader(test_set, batch_size=4, shuffle=True)
+
+            save_path = model_save_path + f'expID-{exp_id}/run-{i}/'
+            results = run_active_learning(X_train, y_train,
+                                          X_pool, y_pool,
+                                          val_loader, test_loader,
+                                          model_save_path=save_path,
+                                          **experiment)
+            runs[i] = results
+
+        # we get the acc of all three runs, but the train size and acq step only
+        # from the last runs since it is the same for all three runs
+        experiment['results'] = {'acc': runs}
+
+    # save the whole experiments dict via pickle
+    save_path = EXPERIMENT_SAVE_PATH + f'expID-{exp_id}'
+    with open(save_path, 'wb') as handle:
+        pickle.dump(experiments, handle, protocol=pickle.HIGHEST_PROTOCOL)
+
+    return experiments, save_path
+
+
+def dropout_approximation(model, dataloader, T=100):
+
+    model.eval()
+    output = []
+
+    for i, (inputs, labels) in tqdm(enumerate(dataloader), total=len(dataloader)):
+
+        list_outputs = [torch.softmax(model(inputs, use_dropout=True), dim=1) for _ in range(T)]
+        tensor_outputs = torch.stack(list_outputs, dim=0)
+        output.append(tensor_outputs)
+
+    return
 
 
 def visualise_datasets(X_train, y_train, X_pool, y_pool,
@@ -269,13 +336,15 @@ def visualise_datasets(X_train, y_train, X_pool, y_pool,
 
 def visualise_active_learning_experiments(experiments, train_size=TRAIN_SIZE):
     for experiment in experiments:
-        runs = experiment['runs']
-        n_acq_steps = experiment['n_acquisition_steps']
+        results = experiment['results']
+        # we need +1 since for the first iteration we don't have an acquisition step yet
+        n_acq_steps = experiment['n_acquisition_steps'] + 1
+        n_samples = experiment['n_samples_to_acquire']
         name = experiment['acquisition_function'].__name__
 
         # we show the mean of all the runs that were done, usually it's 3 runs
-        x = np.array(runs[0]['train size']) - train_size
-        y = np.mean([run['acc'] for run in runs], axis=0) * 100 + np.random.normal(1, 1)
+        x = torch.arange(n_acq_steps) * n_samples
+        y = torch.mean(results['acc'], dim=0) * 100
 
         plt.plot(x, y, label=name.title())
 
@@ -288,35 +357,33 @@ def visualise_active_learning_experiments(experiments, train_size=TRAIN_SIZE):
 
         plt.grid(True, which='both', linestyle='--', linewidth=0.7)
 
-        plt.xticks(ticks=np.linspace(0, x.max(), n_acq_steps), fontsize=12)
+        plt.xticks(ticks=np.linspace(0, x.max(), min(11, n_acq_steps)), fontsize=12)
         plt.yticks(ticks=np.linspace(np.floor(y.min() / 10) * 10, 100, 11), fontsize=12)
         plt.legend(loc='lower right', fontsize=12)
         plt.xlabel('Acquired Samples', fontsize=14)
-        plt.ylabel('Accuracy (%)', fontsize=14)
+        plt.ylabel('Test Accuracy (%)', fontsize=14)
 
     plt.show()
 
 
-def run_experiments(experiments,
-                    X_train, y_train,
-                    X_pool, y_pool,
-                    val_loader, test_loader,
-                    n_runs=3):
-    for experiment in tqdm(experiments, desc='Experiments'):
-        # for each experiment we perform three runs and average the results
-        runs = []
+def visualise_most_and_least_informative_samples(vals, X_data, y_data, n_most=10, n_least=10):
+    most_informative_idx = torch.topk(vals, n_most).indices
+    least_informative_idx = torch.topk(-vals, n_least).indices
 
-        for _ in tqdm(range(n_runs), desc='Runs per Experiment', leave=False):
-            results = run_active_learning(X_train, y_train,
-                                          X_pool, y_pool,
-                                          val_loader, test_loader,
-                                          **experiment)
-            runs.append(results)
+    most = (n_most, most_informative_idx, 'most')
+    least = (n_least, least_informative_idx, 'least')
 
-        experiment['runs'] = runs
+    for num, idx, most_least in [most, least]:
+        if num > 0:
+            X, y = X_data[idx], y_data[idx]
+            fig, axs = plt.subplots(1, num, figsize=(num, 1))
+            axs = axs if isinstance(axs, np.ndarray) else [axs]
+            for i in range(num):
+                ax = axs[i]
+                ax.imshow(X[i].squeeze(), cmap='gray')
+                ax.set_title(f'class {y[i].item()}\n'
+                             f'info {vals[idx[i]]:.1f}')
+                ax.axis('off')
+            fig.suptitle(f'{num} {most_least} informative samples', y=1.5, fontsize=16)
 
-    save_path = EXPERIMENT_SAVE_PATH + datetime.now().strftime('%Y%m%d_%H%M%S')
-    with open(save_path, 'wb') as handle:
-        pickle.dump(experiments, handle, protocol=pickle.HIGHEST_PROTOCOL)
-
-    return experiments, save_path
+    plt.show()
