@@ -72,6 +72,47 @@ def get_datasets(train_size=TRAIN_SIZE,
     return X_train, y_train, X_pool, y_pool, X_val, y_val, X_test, y_test
 
 
+def get_subset_dataloader(subset, X):
+
+    if isinstance(subset, list):
+        subset_idx = subset
+    elif isinstance(subset, int):
+        subset_idx = np.random.choice(range(X.shape[0]), size=subset)
+    else:
+        subset_idx = np.arange(X.shape[0])
+
+    if isinstance(X, torch.util.data.DataLoader):
+        X = torch.concat([torch.concat(elem) for elem in list(iter(X))])
+
+    dataset = torch.utils.data.TensorDataset(X[subset_idx])
+    dataloader = torch.utils.data.DataLoader(dataset, batch_size=100, shuffle=False)
+    return dataloader, subset_idx
+
+
+def get_accuracy_and_info(model, dataloader, acquisition_function, T=100, subset=None):
+
+    dataloader, subset_idx = get_subset_dataloader(subset, dataloader)
+
+    for inputs in tqdm(dataloader, total=len(dataloader), disable=not show_pbar, desc='Predictive Entropy'):
+        list_outputs = [torch.softmax(model(inputs[0], use_dropout=True), dim=1) for _ in range(T)]
+        tensor_outputs = torch.stack(list_outputs, dim=0)
+        mean_outputs = torch.mean(tensor_outputs, dim=0)
+
+    model.eval()
+    running_corrects = 0
+    predications = []
+
+    for i, (inputs, labels) in enumerate(dataloader):
+        outputs = model(inputs)
+        outputs = torch.argmax(outputs, dim=1)
+        running_corrects += torch.sum(torch.Tensor(outputs == labels.data))
+        predications += outputs.tolist()
+
+    acc = running_corrects.float() / (len(dataloader) * 4)
+
+    return acc
+
+
 def train_one_epoch(model,
                     train_loader,
                     optimizer,
@@ -172,22 +213,6 @@ def run_training(model,
     return save_path
 
 
-def get_accuracy(model, dataloader):
-    model.eval()
-    running_corrects = 0
-    predications = []
-
-    for i, (inputs, labels) in enumerate(dataloader):
-        outputs = model(inputs)
-        outputs = torch.argmax(outputs, dim=1)
-        running_corrects += torch.sum(torch.Tensor(outputs == labels.data))
-        predications += outputs.tolist()
-
-    acc = running_corrects.float() / (len(dataloader) * 4)
-
-    return acc
-
-
 def run_active_learning(X_train, y_train, X_pool, y_pool, val_loader, test_loader,
                         acquisition_function, n_acquisition_steps=100, n_samples_to_acquire=10,
                         n_epochs=100, verbose=False, training_verbose=False, model_save_path=MODEL_SAVE_PATH):
@@ -212,20 +237,20 @@ def run_active_learning(X_train, y_train, X_pool, y_pool, val_loader, test_loade
 
         training_model_save_path = (model_save_path
                                     + f'{acquisition_function.__name__}/')
-        path = run_training(net,
-                            train_loader=running_train_loader,
-                            val_loader=val_loader,
-                            optimizer=optimizer,
-                            loss_fn=loss_fn,
-                            n_epochs=n_epochs,
-                            verbose=training_verbose,
-                            early_stopping=10,
-                            model_save_path=training_model_save_path)
+        best_model_path = run_training(net,
+                                       train_loader=running_train_loader,
+                                       val_loader=val_loader,
+                                       optimizer=optimizer,
+                                       loss_fn=loss_fn,
+                                       n_epochs=n_epochs,
+                                       verbose=training_verbose,
+                                       early_stopping=10,
+                                       model_save_path=training_model_save_path)
 
         # loading the model with the lowest val loss to get accuracy on test set
         best_model = LeNet()
-        best_model.load_state_dict(torch.load(path, weights_only=True))
-        acc = get_accuracy(best_model, test_loader)
+        best_model.load_state_dict(torch.load(best_model_path, weights_only=True))
+        acc, info = get_accuracy_and_info(best_model, test_loader, acquisition_function)
         results[i] = acc
 
         if verbose:
@@ -233,11 +258,10 @@ def run_active_learning(X_train, y_train, X_pool, y_pool, val_loader, test_loade
             print(f'Acquisition step {i:3d} - train size: {running_X_train.shape[0]:6_d}, test accuracy: {acc:6.4f}')
             print('\n')
 
+        infos, _, _ = acquisition_function(model=net, X=running_X_pool, T=100, subset=None)
         running_X_train, running_y_train, running_X_pool, running_y_pool \
-            = perform_acquisition(model=net, acquisition_function=acquisition_function,
-                                  n_samples_to_acquire=n_samples_to_acquire,
-                                  X_train=running_X_train, y_train=running_y_train, X_pool=running_X_pool,
-                                  y_pool=running_y_pool)
+            = perform_acquisition(infos=infos, n_samples_to_acquire=n_samples_to_acquire, X_train=running_X_train,
+                                  y_train=running_y_train, X_pool=running_X_pool, y_pool=running_y_pool)
 
     return results
 
@@ -287,20 +311,6 @@ def run_experiments(experiments, n_runs=3, seed=SEED, model_save_path=MODEL_SAVE
         pickle.dump(experiments, handle, protocol=pickle.HIGHEST_PROTOCOL)
 
     return experiments, save_path
-
-
-def dropout_approximation(model, dataloader, T=100):
-
-    model.eval()
-    output = []
-
-    for i, (inputs, labels) in tqdm(enumerate(dataloader), total=len(dataloader)):
-
-        list_outputs = [torch.softmax(model(inputs, use_dropout=True), dim=1) for _ in range(T)]
-        tensor_outputs = torch.stack(list_outputs, dim=0)
-        output.append(tensor_outputs)
-
-    return
 
 
 def visualise_datasets(X_train, y_train, X_pool, y_pool,
