@@ -13,7 +13,7 @@ from matplotlib import pyplot as plt
 
 # custom import
 from networks import LeNet
-from acquisition_functions import perform_acquisition
+from acquisition_functions import get_info_and_predictions, perform_acquisition
 
 TRAIN_SIZE = 20
 VAL_SIZE = 100
@@ -74,6 +74,12 @@ def get_datasets(train_size=TRAIN_SIZE,
 
 def get_subset_dataloader(subset, X):
 
+    # if X is already a dataloader we convert it into a numpy array
+    if isinstance(X, torch.utils.data.DataLoader):
+        X = torch.utils.data.DataLoader(X.dataset, batch_size=len(X.dataset), shuffle=False)
+        X = next(iter(X))[0]
+
+    # if subset is
     if isinstance(subset, list):
         subset_idx = subset
     elif isinstance(subset, int):
@@ -81,36 +87,24 @@ def get_subset_dataloader(subset, X):
     else:
         subset_idx = np.arange(X.shape[0])
 
-    if isinstance(X, torch.util.data.DataLoader):
-        X = torch.concat([torch.concat(elem) for elem in list(iter(X))])
-
     dataset = torch.utils.data.TensorDataset(X[subset_idx])
     dataloader = torch.utils.data.DataLoader(dataset, batch_size=100, shuffle=False)
     return dataloader, subset_idx
 
 
-def get_accuracy_and_info(model, dataloader, acquisition_function, T=100, subset=None):
+def get_accuracy_and_info(model, dataloader, acquisition_function, T=100, subset=None, show_pbar=False):
 
-    dataloader, subset_idx = get_subset_dataloader(subset, dataloader)
+    infos, predictions, subset_idx = get_info_and_predictions(model, dataloader, acquisition_function,
+                                                              T=T, subset=subset, show_pbar=show_pbar)
+    running_corrects = []
 
-    for inputs in tqdm(dataloader, total=len(dataloader), disable=not show_pbar, desc='Predictive Entropy'):
-        list_outputs = [torch.softmax(model(inputs[0], use_dropout=True), dim=1) for _ in range(T)]
-        tensor_outputs = torch.stack(list_outputs, dim=0)
-        mean_outputs = torch.mean(tensor_outputs, dim=0)
+    for preds, (inputs, labels) in tqdm(zip(predictions, dataloader), disable=not show_pbar, desc='Getting Accuracy'):
 
-    model.eval()
-    running_corrects = 0
-    predications = []
-
-    for i, (inputs, labels) in enumerate(dataloader):
-        outputs = model(inputs)
-        outputs = torch.argmax(outputs, dim=1)
-        running_corrects += torch.sum(torch.Tensor(outputs == labels.data))
-        predications += outputs.tolist()
+        running_corrects += torch.sum(torch.Tensor(preds == labels.data))
 
     acc = running_corrects.float() / (len(dataloader) * 4)
 
-    return acc
+    return acc, infos.sum(), subset_idx
 
 
 def train_one_epoch(model,
@@ -214,8 +208,8 @@ def run_training(model,
 
 
 def run_active_learning(X_train, y_train, X_pool, y_pool, val_loader, test_loader,
-                        acquisition_function, n_acquisition_steps=100, n_samples_to_acquire=10,
-                        n_epochs=100, verbose=False, training_verbose=False, model_save_path=MODEL_SAVE_PATH):
+                        acquisition_function, n_acquisition_steps=100, n_samples_to_acquire=10, n_epochs=100,
+                        pool_subset_size=None, verbose=False, training_verbose=False, model_save_path=MODEL_SAVE_PATH):
     running_X_train = X_train
     running_y_train = y_train
 
@@ -224,7 +218,8 @@ def run_active_learning(X_train, y_train, X_pool, y_pool, val_loader, test_loade
 
     # we only return the test accuracies
     # we need n_acquisition_steps+1 since the first iteration does not do an acquisition step
-    results = torch.zeros(n_acquisition_steps+1)
+    results = {'test_acc': torch.zeros(n_acquisition_steps+1),
+               'test_info': torch.zeros(n_acquisition_steps+1)}
 
     for i in tqdm(range(n_acquisition_steps+1), desc='Acquisition Steps', leave=False):
 
@@ -251,17 +246,19 @@ def run_active_learning(X_train, y_train, X_pool, y_pool, val_loader, test_loade
         best_model = LeNet()
         best_model.load_state_dict(torch.load(best_model_path, weights_only=True))
         acc, info = get_accuracy_and_info(best_model, test_loader, acquisition_function)
-        results[i] = acc
+        results['test_acc'][i] = acc
+        results['test_info'][i] = info
 
         if verbose:
             print('\n' + '=' * 75)
             print(f'Acquisition step {i:3d} - train size: {running_X_train.shape[0]:6_d}, test accuracy: {acc:6.4f}')
             print('\n')
 
-        infos, _, _ = acquisition_function(model=net, X=running_X_pool, T=100, subset=None)
+        infos, _, subset_idx = get_info_and_predictions(net, running_X_pool, acquisition_function,
+                                                        T=100, subset=pool_subset_size)
         running_X_train, running_y_train, running_X_pool, running_y_pool \
-            = perform_acquisition(infos=infos, n_samples_to_acquire=n_samples_to_acquire, X_train=running_X_train,
-                                  y_train=running_y_train, X_pool=running_X_pool, y_pool=running_y_pool)
+            = perform_acquisition(infos, n_samples_to_acquire, running_X_train, running_y_train,
+                                  running_X_pool, running_y_pool, subset_idx=subset_idx)
 
     return results
 
@@ -275,7 +272,8 @@ def run_experiments(experiments, n_runs=3, seed=SEED, model_save_path=MODEL_SAVE
         # we need +1 since for the first iteration we don't have an acquisition step yet
         n_acq_steps = experiment['n_acquisition_steps'] + 1
         # for each experiment we perform three runs and average the results
-        runs = torch.zeros((n_runs, n_acq_steps))
+        accuracies = torch.zeros((n_runs, n_acq_steps))
+        infos = torch.zeros((n_runs, n_acq_steps))
 
         torch.manual_seed(seed)
         np.random.seed(seed)
@@ -299,11 +297,13 @@ def run_experiments(experiments, n_runs=3, seed=SEED, model_save_path=MODEL_SAVE
                                           val_loader, test_loader,
                                           model_save_path=save_path,
                                           **experiment)
-            runs[i] = results
+            accuracies[i] = results['test_acc']
+            infos[i] = results['test_info']
 
         # we get the acc of all three runs, but the train size and acq step only
         # from the last runs since it is the same for all three runs
-        experiment['results'] = {'acc': runs}
+        experiment['results'] = {'test_acc': accuracies,
+                                 'test_info': infos}
 
     # save the whole experiments dict via pickle
     save_path = EXPERIMENT_SAVE_PATH + f'expID-{exp_id}'
@@ -344,7 +344,7 @@ def visualise_datasets(X_train, y_train, X_pool, y_pool,
     plt.show()
 
 
-def visualise_active_learning_experiments(experiments, train_size=TRAIN_SIZE):
+def visualise_active_learning_experiments(experiments):
     for experiment in experiments:
         results = experiment['results']
         # we need +1 since for the first iteration we don't have an acquisition step yet
@@ -354,7 +354,7 @@ def visualise_active_learning_experiments(experiments, train_size=TRAIN_SIZE):
 
         # we show the mean of all the runs that were done, usually it's 3 runs
         x = torch.arange(n_acq_steps) * n_samples
-        y = torch.mean(results['acc'], dim=0) * 100
+        y = torch.mean(results['test_acc'], dim=0) * 100
 
         plt.plot(x, y, label=name.title())
 
@@ -376,9 +376,9 @@ def visualise_active_learning_experiments(experiments, train_size=TRAIN_SIZE):
     plt.show()
 
 
-def visualise_most_and_least_informative_samples(vals, X_data, y_data, n_most=10, n_least=10):
-    most_informative_idx = torch.topk(vals, n_most).indices
-    least_informative_idx = torch.topk(-vals, n_least).indices
+def visualise_most_and_least_informative_samples(vals, preds, X_data, y_data, n_most=10, n_least=10):
+    most_informative_idx = torch.topk(torch.Tensor(vals), n_most).indices
+    least_informative_idx = torch.topk(-torch.Tensor(vals), n_least).indices
 
     most = (n_most, most_informative_idx, 'most')
     least = (n_least, least_informative_idx, 'least')
@@ -391,9 +391,10 @@ def visualise_most_and_least_informative_samples(vals, X_data, y_data, n_most=10
             for i in range(num):
                 ax = axs[i]
                 ax.imshow(X[i].squeeze(), cmap='gray')
-                ax.set_title(f'class {y[i].item()}\n'
+                ax.set_title(f'true {y[i].item()}\n'
+                             f'pred {preds[idx[i]]}\n'
                              f'info {vals[idx[i]]:.1f}')
                 ax.axis('off')
-            fig.suptitle(f'{num} {most_least} informative samples', y=1.5, fontsize=16)
+            fig.suptitle(f'{num} {most_least} informative samples', y=1.7, fontsize=16)
 
     plt.show()
