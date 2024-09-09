@@ -177,7 +177,7 @@ def get_trained_model(train_loader, val_loader, n_epochs=100,
     epochs = tqdm(desc=f'Training Model with Training size {len(train_loader.dataset)}', leave=False)
     for epoch in range(n_epochs):
 
-        model.train(True)
+        model.train()
         for inputs, labels in train_loader:
             optimizer.zero_grad()
             outputs = model(inputs)
@@ -212,7 +212,11 @@ def get_trained_model(train_loader, val_loader, n_epochs=100,
     epochs.close()
 
     torch.save(best_model_state_dict, save_path)
-    return save_path
+
+    best_model = LeNet()
+    best_model.load_state_dict(best_model_state_dict)
+
+    return best_model
 
 
 def run_active_learning(X_train, y_train, X_pool, y_pool, val_loader, test_loader, acquisition_function,
@@ -237,20 +241,17 @@ def run_active_learning(X_train, y_train, X_pool, y_pool, val_loader, test_loade
         running_train_loader = torch.utils.data.DataLoader(running_train_set, batch_size=4, shuffle=True)
 
         training_model_save_path = model_save_path + f'{acquisition_function.__name__}/'
-        best_model_path = get_trained_model(train_loader=running_train_loader,
-                                            val_loader=val_loader,
-                                            n_epochs=n_epochs,
-                                            early_stopping=early_stopping,
-                                            model_save_path=training_model_save_path)
+        model = get_trained_model(train_loader=running_train_loader,
+                                  val_loader=val_loader,
+                                  n_epochs=n_epochs,
+                                  early_stopping=early_stopping,
+                                  model_save_path=training_model_save_path)
 
-        # loading the model with the lowest val loss to get accuracy on test set
-        best_model = LeNet()
-        best_model.load_state_dict(torch.load(best_model_path, weights_only=True))
-        info, acc, _ = get_info_and_accuracy(best_model, test_loader, acquisition_function, T=T, show_pbar=True)
+        info, acc, _ = get_info_and_accuracy(model, test_loader, acquisition_function, T=T, show_pbar=True)
         results_info[i] = info
         results_acc[i] = acc
 
-        infos, _, subset_idx = get_info_and_predictions(best_model, running_X_pool, acquisition_function,
+        infos, _, subset_idx = get_info_and_predictions(model, running_X_pool, acquisition_function,
                                                         T=T, subset=pool_subset_size, show_pbar=True)
         running_X_train, running_y_train, running_X_pool, running_y_pool \
             = perform_acquisition(infos, running_X_train, running_y_train, running_X_pool, running_y_pool,

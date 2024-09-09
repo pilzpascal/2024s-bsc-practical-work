@@ -18,7 +18,6 @@ def mutual_information(tensor_outputs, mean_outputs):
 def variation_ratios(tensor_outputs, mean_outputs):
     max_y = mean_outputs.max(dim=1).values
     var_ratio = torch.ones_like(max_y) - max_y
-    var_ratio = var_ratio
     return var_ratio
 
 
