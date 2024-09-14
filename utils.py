@@ -13,10 +13,10 @@ from matplotlib import pyplot as plt
 
 # custom import
 from networks import LeNet
+from acquisition_functions import mutual_information
 
-TRAIN_SIZE = 20
-VAL_SIZE = 1_000
-POOL_SIZE = 60_000 - (TRAIN_SIZE + VAL_SIZE)
+torch.use_deterministic_algorithms(mode=True)
+
 
 DATA_PATH = '/Users/pascalpilz/Documents/Bsc Thesis/data/mnist/'
 MODEL_SAVE_PATH = '/Users/pascalpilz/Documents/Bsc Thesis/models/'
@@ -24,7 +24,7 @@ EXPERIMENT_SAVE_PATH = './Experiment Results/'
 SEED = 1
 
 
-def get_datasets(train_size=TRAIN_SIZE, val_size=VAL_SIZE, data_path=DATA_PATH):
+def get_datasets(train_size=20, val_size=1_000, data_path=DATA_PATH):
 
     transform = torchvision.transforms.Compose(
         [torchvision.transforms.ToTensor(),
@@ -71,9 +71,9 @@ def get_datasets(train_size=TRAIN_SIZE, val_size=VAL_SIZE, data_path=DATA_PATH):
     return X_train, y_train, X_pool, y_pool, X_val, y_val, X_test, y_test
 
 
-def get_subset_dataloader(subset, X):
+def get_subset(subset, X):
 
-    # if X is already a dataloader we convert it into a numpy array
+    # if X is already a dataloader we convert it into a torch tensor
     if isinstance(X, torch.utils.data.DataLoader):
         X = torch.utils.data.DataLoader(X.dataset, batch_size=len(X.dataset), shuffle=False)
         X = next(iter(X))[0]
@@ -85,44 +85,40 @@ def get_subset_dataloader(subset, X):
     else:
         raise ValueError('subset needs to be int or None.')
 
-    dataset = torch.utils.data.TensorDataset(X[subset_idx])
-    dataloader = torch.utils.data.DataLoader(dataset, batch_size=100, shuffle=False)
+    subset = X[subset_idx]
 
-    return dataloader, subset_idx
+    return subset, subset_idx
 
 
-def get_info_and_predictions(model, X, acquisition_function,
-                             T=100, subset=None, show_pbar=False):
+def get_info_and_predictions(model, data, acquisition_function, T=64, subset=None, show_pbar=False):
 
-    dataloader, subset_idx = get_subset_dataloader(subset, X)
-    infos = []
-    preds = []
+    inputs, subset_idx = get_subset(subset, data)
+    list_outputs = []
     model.eval()
 
     with torch.no_grad():
-        for inputs in tqdm(dataloader, total=len(dataloader), disable=not show_pbar, desc='MC Dropout', leave=False):
-            list_outputs = [torch.softmax(model(inputs[0], use_dropout=True), dim=1) for _ in range(T)]
-            tensor_outputs = torch.stack(list_outputs, dim=0)
-            mean_outputs = torch.mean(tensor_outputs, dim=0)
-            predictions = mean_outputs.argmax(dim=1)
+        for _ in tqdm(range(T), disable=not show_pbar, desc='MC Dropout', leave=False):
+            list_outputs.append(torch.softmax(model(inputs, use_dropout=True), dim=1))
 
-            infos += acquisition_function(tensor_outputs, mean_outputs).tolist()
-            preds += predictions.tolist()
+        tensor_outputs = torch.stack(list_outputs, dim=0)
+        mean_outputs = torch.mean(tensor_outputs, dim=0)
+
+        preds = mean_outputs.argmax(dim=1)
+        infos = acquisition_function(tensor_outputs, mean_outputs).tolist()
 
     return infos, preds, subset_idx
 
 
-def get_info_and_accuracy(model, dataloader, acquisition_function,
-                          T=100, subset=None, show_pbar=False):
+def test_model(model, dataloader, T=64, subset=None, show_pbar=False):
 
-    infos, predictions, subset_idx = get_info_and_predictions(model, dataloader, acquisition_function,
-                                                              T=T, subset=subset, show_pbar=show_pbar)
+    infos, predictions, subset_idx = get_info_and_predictions(model, dataloader, subset=subset, show_pbar=show_pbar,
+                                                              acquisition_function=mutual_information, T=T)
     # get average information per data point
-    infos = torch.Tensor(infos).sum() / len(dataloader.dataset)
+    infos = torch.Tensor(infos).mean()
 
     labels = torch.utils.data.DataLoader(dataloader.dataset, batch_size=len(dataloader.dataset), shuffle=False)
-    labels = next(iter(labels))[1]
-    acc = torch.sum(torch.Tensor(torch.Tensor(predictions) == labels)) / labels.shape[0]
+    labels = next(iter(labels))[1][subset_idx]
+    acc = (torch.Tensor(predictions) == labels).float().mean()
 
     return acc, infos, subset_idx
 
@@ -162,7 +158,7 @@ def get_trained_model(train_loader, val_loader, n_epochs=100,
                       early_stopping=10, model_save_path=MODEL_SAVE_PATH):
 
     model = LeNet()
-    optimizer = torch.optim.SGD(model.parameters(), lr=0.001, momentum=0.9)
+    optimizer = torch.optim.SGD(model.parameters(), lr=1e-3, momentum=0.9)
     loss_fn = torch.nn.CrossEntropyLoss()
 
     epochs_since_best_vloss = 0
@@ -174,9 +170,12 @@ def get_trained_model(train_loader, val_loader, n_epochs=100,
     # save_path gets redefined everytime we get a model with a new best_vloss
     save_path = model_path + f'epoch-####_valloss-{best_vloss:.3f}'
 
-    epochs = tqdm(desc=f'Training Model with Training size {len(train_loader.dataset)}', leave=False)
-    for epoch in range(n_epochs):
+    if early_stopping == -1:
+        epochs = tqdm(total=n_epochs, desc=f'Training Model with Training size {len(train_loader.dataset)}', leave=False)
+    else:
+        epochs = tqdm(desc=f'Training Model with Training size {len(train_loader.dataset)}', leave=False)
 
+    for epoch in range(n_epochs):
         model.train()
         for inputs, labels in train_loader:
             optimizer.zero_grad()
@@ -220,8 +219,8 @@ def get_trained_model(train_loader, val_loader, n_epochs=100,
 
 
 def run_active_learning(X_train, y_train, X_pool, y_pool, val_loader, test_loader, acquisition_function,
-                        n_acquisition_steps=100, n_samples_to_acquire=10, T=100, early_stopping=10,
-                        n_epochs=100, pool_subset_size=None, model_save_path=MODEL_SAVE_PATH):
+                        n_acquisition_steps=100, n_samples_to_acquire=10, T=64, early_stopping=10, n_epochs=100,
+                        pool_subset_size=None, test_subset_size=None, model_save_path=MODEL_SAVE_PATH):
 
     running_X_train = X_train.clone()
     running_y_train = y_train.clone()
@@ -230,15 +229,15 @@ def run_active_learning(X_train, y_train, X_pool, y_pool, val_loader, test_loade
 
     # we only return the test accuracies
     # we need n_acquisition_steps+1 since the first iteration does not do an acquisition step
-    results_info = torch.zeros(n_acquisition_steps+1)
-    results_acc = torch.zeros(n_acquisition_steps+1)
+    test_info = torch.zeros(n_acquisition_steps+1)
+    test_acc = torch.zeros(n_acquisition_steps+1)
 
     for i in tqdm(range(n_acquisition_steps+1),
                   desc=f'Acquisition Steps for {' '.join(acquisition_function.__name__.split('_')).title()}',
                   leave=False):
 
         running_train_set = torch.utils.data.TensorDataset(running_X_train, running_y_train)
-        running_train_loader = torch.utils.data.DataLoader(running_train_set, batch_size=4, shuffle=True)
+        running_train_loader = torch.utils.data.DataLoader(running_train_set, batch_size=10, shuffle=True)
 
         training_model_save_path = model_save_path + f'{acquisition_function.__name__}/'
         model = get_trained_model(train_loader=running_train_loader,
@@ -247,9 +246,9 @@ def run_active_learning(X_train, y_train, X_pool, y_pool, val_loader, test_loade
                                   early_stopping=early_stopping,
                                   model_save_path=training_model_save_path)
 
-        info, acc, _ = get_info_and_accuracy(model, test_loader, acquisition_function, T=T, show_pbar=True)
-        results_info[i] = info
-        results_acc[i] = acc
+        info, acc, _ = test_model(model, test_loader, T=T, subset=test_subset_size, show_pbar=True)
+        test_info[i] = info
+        test_acc[i] = acc
 
         infos, _, subset_idx = get_info_and_predictions(model, running_X_pool, acquisition_function,
                                                         T=T, subset=pool_subset_size, show_pbar=True)
@@ -257,16 +256,19 @@ def run_active_learning(X_train, y_train, X_pool, y_pool, val_loader, test_loade
             = perform_acquisition(infos, running_X_train, running_y_train, running_X_pool, running_y_pool,
                                   n_samples_to_acquire=n_samples_to_acquire, subset_idx=subset_idx)
 
-    return results_info, results_acc
+    return test_info, test_acc
 
 
-def run_experiments(experiments, n_runs=3, seed=SEED, val_size=VAL_SIZE,
-                    model_save_path=MODEL_SAVE_PATH, experiment_save_path=EXPERIMENT_SAVE_PATH):
+def run_experiments(experiments, model_save_path=MODEL_SAVE_PATH, experiment_save_path=EXPERIMENT_SAVE_PATH):
 
     exp_id = datetime.now().strftime('%Y%m%d_%H%M%S')
     exp_save_path = experiment_save_path + f'expID-{exp_id}'
 
     for experiment in tqdm(experiments, desc='Experiments'):
+
+        n_runs = experiment.pop('n_runs')
+        seed = experiment.pop('seed')
+        val_size = experiment.pop('val_size')
 
         # we need +1 since for the first iteration we don't have an acquisition step yet
         n_acq_steps = experiment['n_acquisition_steps'] + 1
@@ -285,8 +287,8 @@ def run_experiments(experiments, n_runs=3, seed=SEED, val_size=VAL_SIZE,
             # get val and test set and loader, these stay constant
             val_set = torch.utils.data.TensorDataset(X_val, y_val)
             test_set = torch.utils.data.TensorDataset(X_test, y_test)
-            val_loader = torch.utils.data.DataLoader(val_set, batch_size=4, shuffle=True)
-            test_loader = torch.utils.data.DataLoader(test_set, batch_size=4, shuffle=True)
+            val_loader = torch.utils.data.DataLoader(val_set, batch_size=len(val_set))
+            test_loader = torch.utils.data.DataLoader(test_set, batch_size=len(test_set))
 
             mod_save_path = model_save_path + f'expID-{exp_id}/run-{i}/'
             info, acc = run_active_learning(X_train, y_train,
@@ -302,6 +304,7 @@ def run_experiments(experiments, n_runs=3, seed=SEED, val_size=VAL_SIZE,
         experiment.update({'results': {'test_acc': accuracies, 'test_info': infos},
                            'val_size': val_size,
                            'seed': seed,
+                           'n_runs': n_runs,
                            'model_save_path': model_save_path,
                            'experiment_save_path': experiment_save_path})
 
@@ -343,7 +346,7 @@ def visualise_datasets(X_train, y_train, X_pool, y_pool,
     plt.show()
 
 
-def visualise_active_learning_experiments(experiments):
+def visualise_experiments(experiments):
     fig, axs = plt.subplots(2, 1, figsize=(10, 10))
 
     for experiment in experiments:
@@ -385,7 +388,7 @@ def visualise_active_learning_experiments(experiments):
 
         # axs[1].set_yticks([])
         axs[1].set_ylabel('Mean Information per Test Sample', fontsize=14)
-        axs[1].set_title('Mean Information to be gained from Test Set Across Runs, Normalised to $[0,1]$', fontsize=16)
+        axs[1].set_title('Mean Information to be gained from Test Set Across Runs', fontsize=16)
 
     plt.tight_layout(h_pad=3)
     plt.show()
