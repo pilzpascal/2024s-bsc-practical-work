@@ -120,7 +120,7 @@ def test_model(model, dataloader, T=64, subset=None, show_pbar=False):
     labels = next(iter(labels))[1][subset_idx]
     acc = (torch.Tensor(predictions) == labels).float().mean()
 
-    return acc, infos, subset_idx
+    return infos, acc, subset_idx
 
 
 def perform_acquisition(infos, X_train, y_train, X_pool, y_pool,
@@ -297,8 +297,8 @@ def run_experiments(experiments, model_save_path=MODEL_SAVE_PATH, experiment_sav
                                             model_save_path=mod_save_path,
                                             **experiment)
 
-            accuracies[i] = info
-            infos[i] = acc
+            accuracies[i] = acc
+            infos[i] = info
 
         # we add this information later other we'd get an issue when we pass **experiment to run_active_learning
         experiment.update({'results': {'test_acc': accuracies, 'test_info': infos},

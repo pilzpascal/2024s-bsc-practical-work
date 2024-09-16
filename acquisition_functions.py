@@ -3,14 +3,14 @@ torch.use_deterministic_algorithms(mode=True)
 
 
 def predictive_entropy(tensor_outputs, mean_outputs):
-    entropy_mean = -torch.sum(mean_outputs * torch.log(mean_outputs + 1e-8), dim=1)
+    entropy_mean = -torch.sum(mean_outputs * torch.log(mean_outputs + 1e-10), dim=1)
     return entropy_mean
 
 
 def mutual_information(tensor_outputs, mean_outputs):
-    entropy_mean = -torch.sum(mean_outputs * torch.log(mean_outputs + 1e-8), dim=1)
+    entropy_mean = -torch.sum(mean_outputs * torch.log(mean_outputs + 1e-10), dim=1)
     mean_entropy = torch.mean(
-        torch.sum(tensor_outputs * torch.log(tensor_outputs + 1e-8), dim=2),
+        torch.sum(tensor_outputs * torch.log(tensor_outputs + 1e-10), dim=2),
         dim=0)
     mutual_info = entropy_mean + mean_entropy
     return mutual_info
