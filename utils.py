@@ -158,7 +158,7 @@ def get_trained_model(train_loader, val_loader, n_epochs=100,
                       early_stopping=10, model_save_path=MODEL_SAVE_PATH):
 
     model = LeNet()
-    optimizer = torch.optim.SGD(model.parameters(), lr=1e-3, momentum=0.9)
+    optimizer = torch.optim.Adam(model.parameters(), lr=1e-3)
     loss_fn = torch.nn.CrossEntropyLoss()
 
     epochs_since_best_vloss = 0
@@ -237,7 +237,7 @@ def run_active_learning(X_train, y_train, X_pool, y_pool, val_loader, test_loade
                   leave=False):
 
         running_train_set = torch.utils.data.TensorDataset(running_X_train, running_y_train)
-        running_train_loader = torch.utils.data.DataLoader(running_train_set, batch_size=10, shuffle=True)
+        running_train_loader = torch.utils.data.DataLoader(running_train_set, batch_size=len(running_train_set), shuffle=True)
 
         training_model_save_path = model_save_path + f'{acquisition_function.__name__}/'
         model = get_trained_model(train_loader=running_train_loader,
@@ -387,8 +387,8 @@ def visualise_experiments(experiments):
         axs[0].set_title('Mean Test Accuracy Across Runs', fontsize=16)
 
         # axs[1].set_yticks([])
-        axs[1].set_ylabel('Mean Information per Test Sample', fontsize=14)
-        axs[1].set_title('Mean Information to be gained from Test Set Across Runs', fontsize=16)
+        axs[1].set_ylabel('Average Mutual Info per Test Sample', fontsize=14)
+        axs[1].set_title('Mean Mutual Information Across Runs', fontsize=16)
 
     plt.tight_layout(h_pad=3)
     plt.show()
