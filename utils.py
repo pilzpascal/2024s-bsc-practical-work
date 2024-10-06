@@ -179,7 +179,7 @@ def get_trained_model(train_loader, val_loader, n_epochs=100,
         model.train()
         for inputs, labels in train_loader:
             optimizer.zero_grad()
-            outputs = model(inputs)
+            outputs = model(inputs, use_dropout=True)
             loss = loss_fn(outputs, labels)
             loss.backward()
             optimizer.step()
@@ -189,7 +189,7 @@ def get_trained_model(train_loader, val_loader, n_epochs=100,
         model.eval()
         with torch.no_grad():
             for vinputs, vlabels in val_loader:
-                voutputs = model(vinputs)
+                voutputs = model(vinputs, use_dropout=False)
                 vloss = loss_fn(voutputs, vlabels)
                 running_vloss += vloss
 
@@ -349,7 +349,17 @@ def visualise_datasets(X_train, y_train, X_pool, y_pool,
 def visualise_experiments(experiments):
     fig, axs = plt.subplots(2, 1, figsize=(10, 10))
 
-    for experiment in experiments:
+    # get the calculated upper bounds for accuracy and information
+    # these are obtained by training on all 59_000 (1_000 val) training samples
+    y_acc_ubound = torch.mean(experiments[-1]['test_acc_ubound'], dim=0) * 100
+    y_inf_lbound = torch.mean(experiments[-1]['test_inf_lbound'], dim=0)
+
+    axs[0].axhline(y=y_acc_ubound, color='grey', linestyle='--',
+                   label=f'full dataset ({torch.mean(experiments[-1]['test_acc_ubound'], dim=0) * 100:.2f})')
+    axs[1].axhline(y=y_inf_lbound, color='grey', linestyle='--',
+                   label=f'full dataset ({torch.mean(experiments[-1]['test_inf_lbound'], dim=0):.2f})')
+
+    for experiment in experiments[:-1]:
 
         if 'results' not in experiment:
             continue
@@ -364,8 +374,6 @@ def visualise_experiments(experiments):
         x = torch.arange(n_acq_steps) * n_samples
         y_acc = torch.mean(results['test_acc'], dim=0) * 100
         y_inf = torch.mean(results['test_info'], dim=0)
-        # Normalise information values to [0,1]
-        # y_inf = (y_inf - y_inf.min()) / (y_inf.max() - y_inf.min())
 
         axs[0].plot(x, y_acc, label=' '.join(name.split('_')).title())
         axs[1].plot(x, y_inf, label=' '.join(name.split('_')).title())

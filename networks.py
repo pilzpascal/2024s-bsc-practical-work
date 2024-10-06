@@ -14,7 +14,7 @@ class LeNet(nn.Module):
         self.fc2 = nn.Linear(120, 84)
         self.fc3 = nn.Linear(84, 10)
 
-    def forward(self, x, use_dropout=True):                 # x.shape = (b, 32, 32), where b is batch size
+    def forward(self, x, use_dropout=False):                 # x.shape = (b, 32, 32), where b is batch size
         c1 = F.relu(self.conv1(x))                          # c1.shape = (b, 6, 28, 28)
         p2 = self.pool(c1)                                  # p2.shape = (b, 6, 12, 12)
         c3 = F.relu(self.conv2(p2))                         # c3.shape = (b, 16, 10, 10)
