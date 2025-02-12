@@ -1,120 +1,232 @@
-import pickle
+import yaml
 from tqdm.auto import tqdm
 from datetime import datetime
 
 import torch
 import numpy as np
 
+from src.reproducibility import set_seed
+from src.training_and_testing import train_and_test_full_dataset
 from src.data_loading_and_processing import get_datasets
 from src.active_learning import run_active_learning
-from src.acquisition_functions import (random,
-                                       variation_ratios,
-                                       mutual_information,
-                                       predictive_entropy,
-                                       mean_standard_deviation)
 
 
-def get_experiments(which_acq_funcs: list[str],
+def get_experiment(
+        # experiment parameters
+        which_acq_funcs: list[str],
+        seed: int,
+        n_runs: int,
+        train_size: int,
+        val_size: int,
+        data_path: str,
+        exp_save_path_base: str,
+        model_save_path_base: str,
 
-                    seed: int,
-                    n_runs: int,
+        # active learning parameters
+        n_acquisition_steps: int,
+        n_samples_to_acquire: int,
+        pool_subset_size: int,
+        test_subset_size: int,
+        num_mc_samples: int,
 
-                    train_size: int,
-                    val_size: int,
-                    n_acquisition_steps: int,
-                    n_samples_to_acquire: int,
-                    pool_subset_size: int,
-                    test_subset_size: int,
-                    T: int,
+        # training parameters
+        n_epochs: int,
+        early_stopping: int,
 
-                    n_epochs: int,
-                    early_stopping: int,
-                    model_save_path: str,
-                    experiment_save_path: str):
+        # (optional) precomputed test bounds
+        test_inf: list[float] | None = None,
+        test_acc: list[float] | None = None
+) -> dict:
+    """
+    Initializes an experiment configuration dictionary.
 
-    base_experiment = {'n_acquisition_steps': n_acquisition_steps,
-                       'n_samples_to_acquire': n_samples_to_acquire,
-                       'pool_subset_size': pool_subset_size,
-                       'test_subset_size': test_subset_size,
-                       'T': T,
-                       'n_epochs': n_epochs,
-                       'early_stopping': early_stopping,
-                       'val_size': val_size,
-                       'n_runs': n_runs,
-                       'seed': seed}
+    Parameters
+    ----------
+    which_acq_funcs : List[str]
+        List of acquisition function names.
+    seed : int
+        Random seed for reproducibility.
+    n_runs : int
+        Number of experiment repetitions.
+    train_size : int
+        Number of training samples.
+    val_size : int
+        Number of validation samples.
+    data_path : str
+        Path to the dataset.
+    exp_save_path_base : str
+        Directory to save experiment results.
+    model_save_path_base : str
+        Path to save trained models.
 
-    experiments = []
-    for func in [random, variation_ratios, mutual_information, predictive_entropy, mean_standard_deviation]:
-        if func.__name__ in which_acq_funcs:
-            experiment_params = base_experiment.copy()
-            experiment_params['acquisition_function'] = func
-            experiments.append(experiment_params)
+    n_acquisition_steps : int
+        Number of acquisition steps in active learning.
+    n_samples_to_acquire : int
+        Number of samples to acquire per acquisition step.
+    pool_subset_size : int
+        Subset size of the pool for acquisition.
+    test_subset_size : int
+        Number of test samples.
+    num_mc_samples : int
+        Number of Monte Carlo dropout samples.
 
-    return experiments
+    n_epochs : int
+        Number of training epochs.
+    early_stopping : int
+        Early stopping patience.
+
+    test_inf : Optional[list[float]], default=None
+        Test mutual information lower bound per run in n_runs (if precomputed).
+        If None, the mutual information is computed during the experiment.
+    test_acc : Optional[list[float]], default=None
+        Test accuracy upper bound per run in n_runs (if precomputed).
+        If None, the accuracy is computed during the experiment.
+
+    Returns
+    -------
+    dict
+        A structured dictionary containing experiment parameters and placeholders for results.
+    """
+
+    if test_inf is None or test_acc is None:
+        test_inf = []
+        test_acc = []
+    else:
+        assert len(test_inf) == n_runs
+        assert len(test_acc) == n_runs
+
+    experiment = {
+
+        'params': {
+            # stores experiment parameters
+            'exp': {
+                'which_acq_funcs': which_acq_funcs,
+                'seed': seed,
+                'n_runs': n_runs,
+                'train_size': train_size,
+                'val_size': val_size,
+                'data_path': data_path,
+                'exp_save_path_base': exp_save_path_base,
+                'model_save_path_base': model_save_path_base,
+            },
+            # stored active learning parameters
+            'al': {
+                'n_acquisition_steps': n_acquisition_steps,
+                'n_samples_to_acquire': n_samples_to_acquire,
+                'pool_subset_size': pool_subset_size,
+                'test_subset_size': test_subset_size,
+                'num_mc_samples': num_mc_samples,
+            },
+            # stored training parameters
+            'train': {
+                'n_epochs': n_epochs,
+                'early_stopping': early_stopping,
+            },
+        },
+
+        'results': {
+            # stores the results for each acquisition function
+            'acq': {
+                func_name: {
+                    'test_inf': [],
+                    'test_acc': []
+                } for func_name in which_acq_funcs
+            },
+            # bounds are obtained by training on the full training set
+            'bounds': {
+                'test_inf': test_inf,
+                'test_acc': test_acc
+            }
+        }
+
+    }
+
+    return experiment
 
 
-def run_experiments(experiments,
-                    model_save_path,
-                    experiment_save_path,
-                    data_path):
+def save_experiment(experiment, filename):
 
-    exp_id = datetime.now().strftime('%Y%m%d_%H%M%S')
-    exp_save_path = experiment_save_path + f'expID-{exp_id}'
+    # convert numpy arrays to lists for YAML compatibility
+    def _convert_numpy(obj):
+        # convert arrays to lists
+        if isinstance(obj, np.ndarray) or isinstance(obj, torch.Tensor):
+            return obj.tolist()
+        # recursively convert dicts
+        elif isinstance(obj, dict):
+            return {k: _convert_numpy(v) for k, v in obj.items()}
+        # recursively convert lists
+        elif isinstance(obj, list):
+            return [_convert_numpy(v) for v in obj]
+        # return as-is if not numpy
+        return obj
 
-    for experiment in tqdm(experiments, desc='Experiments'):
+    experiment = _convert_numpy(experiment)
 
-        n_runs = experiment.pop('n_runs')
-        seed = experiment.pop('seed')
-        val_size = experiment.pop('val_size')
+    with open(filename, 'w') as f:
+        yaml.dump(experiment, f, default_flow_style=False, sort_keys=False)
 
-        # we need +1 since for the first iteration we don't have an acquisition step yet
-        n_acq_steps = experiment['n_acquisition_steps'] + 1
-        # for each experiment we perform three runs and average the results
-        accuracies = torch.zeros((n_runs, n_acq_steps))
-        infos = torch.zeros((n_runs, n_acq_steps))
 
-        torch.manual_seed(seed)
-        np.random.seed(seed)
+def load_experiment(filename):
+    with open(filename, 'r') as f:
+        return yaml.safe_load(f)
 
-        for i in tqdm(range(n_runs), desc='Runs per Experiment', leave=False):
 
-            # get dataset new for each run, such that train and pool is shuffled newly
-            X_train, y_train, X_pool, y_pool, X_val, y_val, X_test, y_test = get_datasets(val_size=val_size,
-                                                                                          data_path=data_path)
+def run_experiment(experiment):
 
-            # get val and test set and loader, these stay constant
-            val_set = torch.utils.data.TensorDataset(X_val, y_val)
-            test_set = torch.utils.data.TensorDataset(X_test, y_test)
-            val_loader = torch.utils.data.DataLoader(val_set, batch_size=len(val_set))
-            test_loader = torch.utils.data.DataLoader(test_set, batch_size=len(test_set))
+    exp_params = experiment['params']['exp']
 
-            mod_save_path = model_save_path + f'expID-{exp_id}/run-{i}/'
-            info, acc = run_active_learning(X_train, y_train,
-                                            X_pool, y_pool,
-                                            val_loader, test_loader,
-                                            model_save_path=mod_save_path,
-                                            **experiment)
+    set_seed(exp_params['seed'])
 
-            accuracies[i] = acc
-            infos[i] = info
+    exp_id = datetime.now().strftime('%Y-%m-%d_%H-%M-%S')
+    exp_save_path = exp_params['exp_save_path_base'] + exp_id + '.yaml'
 
-        # we add this information later otherwise we'd get an issue when we pass **experiment to run_active_learning
-        experiment.update({'results': {'test_acc': accuracies, 'test_info': infos},
-                           'val_size': val_size,
-                           'seed': seed,
-                           'n_runs': n_runs,
-                           'model_save_path': model_save_path,
-                           'experiment_save_path': experiment_save_path})
+    # for each experiment we perform three runs
+    for i in tqdm(range(exp_params['n_runs']), desc='Runs per Experiment', leave=False):
 
-        # everything after each experiment is done
-        with open(exp_save_path, 'wb') as handle:
-            pickle.dump(experiments, handle, protocol=pickle.HIGHEST_PROTOCOL)
+        model_save_path = exp_params['model_save_path_base'] + exp_id + f'/run-{i}/'
 
-    # TODO: implement upper bound for acc and lower bound for mutual info
-    experiments.append({'test_acc_ubound': None,
-                        'test_inf_lbound': None})
+        # get dataset new for each run, such that train and pool is shuffled newly
+        X_train, y_train, X_pool, y_pool, X_val, y_val, X_test, y_test \
+            = get_datasets(data_path=exp_params['data_path'],
+                           init_train_size=exp_params['train_size'],
+                           val_size=exp_params['val_size'])
 
-    with open(exp_save_path, 'wb') as handle:
-        pickle.dump(experiments, handle, protocol=pickle.HIGHEST_PROTOCOL)
+        # get val and test set and loader, these stay constant
+        val_set = torch.utils.data.TensorDataset(X_val, y_val)
+        val_loader = torch.utils.data.DataLoader(val_set, batch_size=len(val_set))
+        test_set = torch.utils.data.TensorDataset(X_test, y_test)
+        test_loader = torch.utils.data.DataLoader(test_set, batch_size=len(test_set))
 
-    return experiments, exp_save_path
+        # if the test bounds are not precomputed, we train on the full training set
+        if len(experiment['results']['bounds']['test_inf']) != exp_params['n_runs']\
+                or len(experiment['results']['bounds']['test_acc']) != exp_params['n_runs']:
+
+            inf, acc = train_and_test_full_dataset(X_train, y_train,
+                                                   X_pool, y_pool,
+                                                   val_loader=val_loader,
+                                                   test_loader=test_loader,
+                                                   model_save_path=model_save_path,
+                                                   num_mc_samples=experiment['params']['al']['num_mc_samples'],
+                                                   **experiment['params']['train'])
+            experiment['results']['bounds']['test_inf'].append(inf)
+            experiment['results']['bounds']['test_acc'].append(acc)
+            save_experiment(experiment, exp_save_path)
+
+        # perform active learning for each acquisition function
+        for acq_func_name in tqdm(exp_params['which_acq_funcs'], desc='Experiments'):
+
+            acq_func = acq_funcs[acq_func_name]
+            inf, acc = run_active_learning(X_train, y_train,
+                                           X_pool, y_pool,
+                                           val_loader, test_loader,
+                                           acquisition_function=acq_func,
+                                           model_save_path_base=model_save_path,
+                                           **experiment['params']['al'],
+                                           **experiment['params']['train'],
+                                           )
+
+            experiment['results']['acq'][acq_func_name]['test_inf'] = inf
+            experiment['results']['acq'][acq_func_name]['test_acc'] = acc
+            save_experiment(experiment, exp_save_path)
+
+    return experiment

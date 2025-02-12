@@ -36,9 +36,10 @@ def random(tensor_outputs, mean_outputs):
     return torch.rand(tensor_outputs.shape[1])
 
 
-def get_info_and_predictions(model, data, acquisition_function,
-                             subset: int | list | np.ndarray | None = None,
-                             T: int = 64,
+def get_info_and_predictions(model, data,
+                             acquisition_function: callable,
+                             subset: int | list | np.ndarray | None,
+                             num_mc_samples: int,
                              show_pbar: bool = False)\
         -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
     """
@@ -52,7 +53,7 @@ def get_info_and_predictions(model, data, acquisition_function,
         The data to use
     acquisition_function : callable
         The acquisition function to use
-    T : int
+    num_mc_samples : int
         The number of samples to use for MC Dropout
     subset : int, list, np.ndarray, or None
         The number of samples to use for the subset, or the indices of
@@ -72,7 +73,8 @@ def get_info_and_predictions(model, data, acquisition_function,
 
     with torch.no_grad():
 
-        for _ in tqdm(range(T), disable=not show_pbar, desc='MC Dropout', leave=False):
+        # Note: parallelizing this does not speed it up. I tested it.
+        for _ in tqdm(range(num_mc_samples), disable=not show_pbar, desc='MC Dropout', leave=False):
             list_outputs.append(torch.softmax(model(inputs, use_dropout=True), dim=1))
 
         tensor_outputs = torch.stack(list_outputs, dim=0)

@@ -4,9 +4,9 @@ import torch
 import torchvision
 
 
-def get_datasets(data_path, init_train_size: int = 20, val_size: int = 1_000)\
-        -> tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor,
-                 torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
+def get_datasets(data_path, init_train_size: int, val_size: int
+                 ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor,
+                            torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
     """
     Loads the MNIST dataset and splits it into training, validation, and test sets.
 
@@ -14,9 +14,9 @@ def get_datasets(data_path, init_train_size: int = 20, val_size: int = 1_000)\
     ----------
     data_path : str
         The path to the data.
-    init_train_size : int, optional
+    init_train_size : int
         The number of samples to use for training, by default 20.
-    val_size : int, optional
+    val_size : int
         The number of samples to use for validation, by default 1_000.
 
     Returns
