@@ -7,8 +7,13 @@ from matplotlib import pyplot as plt
 from tabulate import tabulate
 
 
-def visualise_datasets(X_train, y_train, X_pool, y_pool,
-                       X_val, y_val, X_test, y_test):
+def visualise_datasets(
+        X_train, y_train,
+        X_pool, y_pool,
+        X_val, y_val,
+        X_test, y_test)\
+        -> None:
+
     # show each dataset size, mean, std in a nice table
     print(tabulate([[name, len(ds), ds.mean(), ds.std()] for name, ds in
                     [('train', X_train), ('pool', X_pool), ('val', X_val), ('test', X_test)]],
@@ -38,24 +43,21 @@ def visualise_datasets(X_train, y_train, X_pool, y_pool,
     plt.show()
 
 
-def visualise_experiments(path):
-
-    with open(path, 'rb') as handle:
-        experiments = pickle.load(handle)
+def visualise_experiments(experiment: dict) -> None:
 
     fig, axs = plt.subplots(2, 1, figsize=(10, 10))
 
     # if existent, get the calculated upper bounds for accuracy and information
     # these are obtained by training on all 59_000 (1_000 val) training samples
     for i, value in enumerate(['test_acc_ubound', 'test_inf_lbound']):
-        if experiments[-1][value] is not None:
-            bound = torch.mean(experiments[-1][value], dim=0)
+        if experiment[-1][value] is not None:
+            bound = torch.mean(experiment[-1][value], dim=0)
             # acc is percentage, mutual info is not
             bound = bound * 100 if value == 'test_acc_ubound' else bound
             axs[i].axhline(y=bound, color='grey', linestyle='--',
                            label=f'full dataset ({torch.mean(bound):.2f})')
 
-    for experiment in experiments[:-1]:
+    for experiment in experiment[:-1]:
 
         if 'results' not in experiment:
             continue
@@ -98,8 +100,12 @@ def visualise_experiments(path):
     plt.show()
 
 
-def visualise_most_and_least_informative_samples(vals, preds, X_data, y_data,
-                                                 n_most=10, n_least=10):
+def visualise_most_and_least_informative_samples(
+        vals, preds,
+        X_data, y_data,
+        n_most=10, n_least=10)\
+        -> None:
+
     most_informative_idx = torch.topk(torch.Tensor(vals), n_most).indices
     least_informative_idx = torch.topk(-torch.Tensor(vals), n_least).indices
 

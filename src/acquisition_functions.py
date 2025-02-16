@@ -1,39 +1,45 @@
 from tqdm.auto import tqdm
 
 import torch
+import scipy
 import numpy as np
 
 from src.data_loading_and_processing import get_subset
 
 
-def predictive_entropy(tensor_outputs, mean_outputs):
-    entropy_mean = -torch.sum(mean_outputs * torch.log(mean_outputs + 1e-10), dim=1)
+def predictive_entropy(tensor_outputs, eps=1e-10):  # (T, B, C)
+    mean_outputs = torch.mean(tensor_outputs, dim=0)  # mean over MC samples
+    entropy_mean = -torch.sum(mean_outputs * torch.log(mean_outputs + eps), dim=-1)  # -1 is class dim
     return entropy_mean
 
 
-def mutual_information(tensor_outputs, mean_outputs):
-    entropy_mean = -torch.sum(mean_outputs * torch.log(mean_outputs + 1e-10), dim=1)
+def mutual_information(tensor_outputs, eps=1e-10):  # (T, B, C)
+    mean_outputs = torch.mean(tensor_outputs, dim=0)  # mean over MC samples
+    entropy_mean = -torch.sum(mean_outputs * torch.log(mean_outputs + eps), dim=-1)  # -1 is class dim
     mean_entropy = torch.mean(
-        torch.sum(tensor_outputs * torch.log(tensor_outputs + 1e-10), dim=2),
-        dim=0)
+        torch.sum(tensor_outputs * torch.log(tensor_outputs + eps), dim=-1),  # -1 is class dim
+        dim=0
+    )
     mutual_info = entropy_mean + mean_entropy
     return mutual_info
 
 
-def variation_ratios(tensor_outputs, mean_outputs):
-    max_y = mean_outputs.max(dim=1).values
-    var_ratio = 1. - max_y
+def variation_ratios(tensor_outputs):  # (T, B, C)
+    preds = tensor_outputs.argmax(dim=2).numpy()
+    _, counts = scipy.stats.mode(preds, axis=0)  # count of the most common class
+    N = preds.shape[0]  # total number of cases in all classes, T
+    var_ratio = (1. - counts / N).squeeze()
     return var_ratio
 
 
-def mean_standard_deviation(tensor_outputs, mean_outputs):
-    stds = torch.std(tensor_outputs, dim=0)
-    mean_stds = torch.mean(stds, dim=1)
+def mean_standard_deviation(tensor_outputs):  # (T, B, C)
+    stds = torch.std(tensor_outputs, dim=0)  # std over MC samples
+    mean_stds = torch.mean(stds, dim=-1)  # -1 is class dim
     return mean_stds
 
 
-def random(tensor_outputs, mean_outputs):
-    return torch.rand(tensor_outputs.shape[1])
+def random(tensor_outputs):  # (T, B, C)
+    return torch.rand(tensor_outputs.shape[1])  # 1 is batch dim
 
 
 def get_info_and_predictions(model, data,
@@ -68,19 +74,22 @@ def get_info_and_predictions(model, data,
     """
 
     inputs, subset_idx = get_subset(data, subset)
-    list_outputs = []
-    model.eval()
 
+    model.eval()
     with torch.no_grad():
 
         # Note: parallelizing this does not speed it up. I tested it.
+        list_outputs = []
         for _ in tqdm(range(num_mc_samples), disable=not show_pbar, desc='MC Dropout', leave=False):
-            list_outputs.append(torch.softmax(model(inputs, use_dropout=True), dim=1))
+            list_outputs.append(
+                torch.softmax(
+                    model(inputs, use_dropout=True),
+                    dim=1
+                )
+            )
 
-        tensor_outputs = torch.stack(list_outputs, dim=0)
-        mean_outputs = torch.mean(tensor_outputs, dim=0)
-
-        preds = mean_outputs.argmax(dim=1)
-        infos = acquisition_function(tensor_outputs, mean_outputs).tolist()
+    tensor_outputs = torch.stack(list_outputs, dim=0)
+    preds = torch.mean(tensor_outputs, dim=0).argmax(dim=1)
+    infos = acquisition_function(tensor_outputs)
 
     return infos, preds, subset_idx

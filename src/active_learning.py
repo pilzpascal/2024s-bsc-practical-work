@@ -4,15 +4,6 @@ import torch
 
 from src.training_and_testing import test_model, get_trained_model
 from src.acquisition_functions import get_info_and_predictions
-from src.acquisition_functions import (random,
-                                       variation_ratios,
-                                       mutual_information,
-                                       predictive_entropy,
-                                       mean_standard_deviation)
-acq_funcs = {
-    func.__name__: func for func in
-    [random, variation_ratios, mutual_information, predictive_entropy, mean_standard_deviation]
-}
 
 
 def perform_acquisition(infos,
@@ -54,7 +45,7 @@ def perform_acquisition(infos,
 def run_active_learning(X_train, y_train,
                         X_pool, y_pool,
                         val_loader, test_loader,
-                        acquisition_function_name: str,
+                        acquisition_function: callable,
                         model_save_path_base: str,
 
                         n_acquisition_steps: int,
@@ -67,15 +58,15 @@ def run_active_learning(X_train, y_train,
                         early_stopping: int,
                         ) -> tuple[list, list]:
 
+    acquisition_function_name = acquisition_function.__name__
+    model_save_path_acq = model_save_path_base + f'{acquisition_function_name}/'
+
     test_inf = []
     test_acc = []
 
-    acquisition_function = acq_funcs[acquisition_function_name]
-    model_save_path_acq = model_save_path_base + f'{acquisition_function_name}/'
-
     # we need n_acquisition_steps+1 since the first iteration does not do an acquisition step
     for _ in tqdm(range(n_acquisition_steps+1), leave=False,
-                  desc=f'Acquisition Steps for {' '.join(acquisition_function_name.split('_')).title()}'):
+                  desc=f'Acquisition Steps for {acquisition_function_name.replace("_", " ").title()}'):
 
         model = get_trained_model(X_train, y_train,
                                   val_loader=val_loader,

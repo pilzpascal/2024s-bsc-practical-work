@@ -8,13 +8,13 @@ class LeNet(nn.Module):
 
     def __init__(self):
         super(LeNet, self).__init__()
-        self.conv1 = nn.Conv2d(1, 6, 5)
+        self.conv1 = nn.Conv2d(1, 6, 5, padding='same')
         self.conv2 = nn.Conv2d(6, 16, 5)
         self.fc1 = nn.Linear(16 * 5 * 5, 120)  # images are 5x5 with 16 channels
         self.fc2 = nn.Linear(120, 84)
         self.fc3 = nn.Linear(84, 10)
 
-    def forward(self, x, use_dropout=False):                # (N, 32, 32), where N is batch size
+    def forward(self, x, use_dropout=False):                # (N, 28, 28), where N is batch size
 
         x = F.relu(self.conv1(x))                           # (N, 6, 28, 28)
         x = F.max_pool2d(x, kernel_size=2)                  # (N, 6, 14, 14)

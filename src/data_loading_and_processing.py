@@ -6,7 +6,7 @@ import torchvision
 
 def get_datasets(data_path, init_train_size: int, val_size: int
                  ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor,
-                            torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
+                            torch.utils.data.DataLoader, torch.utils.data.DataLoader]:
     """
     Loads the MNIST dataset and splits it into training, validation, and test sets.
 
@@ -27,19 +27,13 @@ def get_datasets(data_path, init_train_size: int, val_size: int
         - y_train (torch.Tensor): The training labels.
         - X_pool (torch.Tensor): The pool data.
         - y_pool (torch.Tensor): The pool labels.
-        - X_val (torch.Tensor): The validation data.
-        - y_val (torch.Tensor): The validation labels.
-        - X_test (torch.Tensor): The test data.
-        - y_test (torch.Tensor): The test labels.
+        - val_loader (torch.utils.data.DataLoader): The validation data loader.
+        - test_loader (torch.utils.data.DataLoader): The test data loader.
     """
 
     transform = torchvision.transforms.Compose(
         [torchvision.transforms.ToTensor(),
-         # we pad because the images are 28x28 but LeNet expects 32x32
-         torchvision.transforms.Pad(2),
-         # 0.10003718 and 0.2752173 are mean and std respectively of train set after padding
-         # (without padding it is 0.1307 and 0.3081 for mean and std respectively)
-         torchvision.transforms.Normalize((0.10003718,), (0.2752173,))])
+         torchvision.transforms.Normalize((0.1307,), (0.3081,))])
 
     # getting the test and train set
     train_val_set = torchvision.datasets.MNIST(root=data_path, train=True, transform=transform)
@@ -58,8 +52,6 @@ def get_datasets(data_path, init_train_size: int, val_size: int
     test_loader = torch.utils.data.DataLoader(test_set, batch_size=len(test_set), shuffle=True)
 
     X_train_pool, y_train_pool = next(iter(train_pool_loader))
-    X_val, y_val = next(iter(val_loader))
-    X_test, y_test = next(iter(test_loader))
 
     # creating a random but balanced initial training set and pool from remaining train data
     if init_train_size <= 50:
@@ -79,7 +71,7 @@ def get_datasets(data_path, init_train_size: int, val_size: int
     X_pool = X_train_pool[~torch.isin(torch.arange(len(X_train_pool)), idx)]
     y_pool = y_train_pool[~torch.isin(torch.arange(len(X_train_pool)), idx)]
 
-    return X_train, y_train, X_pool, y_pool, X_val, y_val, X_test, y_test
+    return X_train, y_train, X_pool, y_pool, val_loader, test_loader
 
 
 def get_subset(X: torch.Tensor | torch.utils.data.DataLoader | torch.utils.data.TensorDataset,
@@ -109,7 +101,8 @@ def get_subset(X: torch.Tensor | torch.utils.data.DataLoader | torch.utils.data.
 
     # if X is already a dataloader we convert it into a torch tensor
     if isinstance(X, torch.utils.data.DataLoader):
-        X = X.dataset[:][0]
+        X.shuffle = False
+        X = torch.concat([elem[0] for elem in iter(X)])
 
     # if X is a dataset we convert it into a torch tensor
     elif isinstance(X, torch.utils.data.TensorDataset):
