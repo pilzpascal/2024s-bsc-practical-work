@@ -7,13 +7,13 @@ import numpy as np
 from src.data_loading_and_processing import get_subset
 
 
-def predictive_entropy(tensor_outputs, eps=1e-10):  # (T, B, C)
+def predictive_entropy(tensor_outputs, eps=1e-10) -> torch.Tensor:  # (T, B, C)
     mean_outputs = torch.mean(tensor_outputs, dim=0)  # mean over MC samples
     entropy_mean = -torch.sum(mean_outputs * torch.log(mean_outputs + eps), dim=-1)  # -1 is class dim
     return entropy_mean
 
 
-def mutual_information(tensor_outputs, eps=1e-10):  # (T, B, C)
+def mutual_information(tensor_outputs, eps=1e-10) -> torch.Tensor:  # (T, B, C)
     mean_outputs = torch.mean(tensor_outputs, dim=0)  # mean over MC samples
     entropy_mean = -torch.sum(mean_outputs * torch.log(mean_outputs + eps), dim=-1)  # -1 is class dim
     mean_entropy = torch.mean(
@@ -24,30 +24,33 @@ def mutual_information(tensor_outputs, eps=1e-10):  # (T, B, C)
     return mutual_info
 
 
-def variation_ratios(tensor_outputs):  # (T, B, C)
+def variation_ratios(tensor_outputs) -> torch.Tensor:  # (T, B, C)
     preds = tensor_outputs.argmax(dim=2).numpy()
     _, counts = scipy.stats.mode(preds, axis=0)  # count of the most common class
     N = preds.shape[0]  # total number of cases in all classes, T
     var_ratio = (1. - counts / N).squeeze()
+    var_ratio = torch.Tensor(var_ratio)
     return var_ratio
 
 
-def mean_standard_deviation(tensor_outputs):  # (T, B, C)
+def mean_standard_deviation(tensor_outputs) -> torch.Tensor:  # (T, B, C)
     stds = torch.std(tensor_outputs, dim=0)  # std over MC samples
     mean_stds = torch.mean(stds, dim=-1)  # -1 is class dim
     return mean_stds
 
 
-def random(tensor_outputs):  # (T, B, C)
+def random(tensor_outputs) -> torch.Tensor:  # (T, B, C)
     return torch.rand(tensor_outputs.shape[1])  # 1 is batch dim
 
 
-def get_info_and_predictions(model, data,
-                             acquisition_function: callable,
-                             subset: int | list | np.ndarray | None,
-                             num_mc_samples: int,
-                             show_pbar: bool = False)\
-        -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+def get_info_and_predictions(
+        model,
+        data,
+        acquisition_function: callable,
+        subset: int | list | np.ndarray | None,
+        num_mc_samples: int,
+        show_pbar: bool = False
+) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
     """
     Get the information per sample for a given acquisition and predictions from the model.
 

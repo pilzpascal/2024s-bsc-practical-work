@@ -1,4 +1,4 @@
-import pickle
+import yaml
 
 import torch
 import numpy as np
@@ -11,19 +11,28 @@ def visualise_datasets(
         X_train, y_train,
         X_pool, y_pool,
         X_val, y_val,
-        X_test, y_test)\
-        -> None:
+        X_test, y_test
+) -> None:
 
     # show each dataset size, mean, std in a nice table
-    print(tabulate([[name, len(ds), ds.mean(), ds.std()] for name, ds in
-                    [('train', X_train), ('pool', X_pool), ('val', X_val), ('test', X_test)]],
-                   floatfmt='.3f', intfmt='_', headers=['size', 'mean', 'std']))
+    print(
+        tabulate(
+            [
+                [name, len(ds), ds.mean(), ds.std()]
+                for name, ds in
+                [('train', X_train), ('pool', X_pool), ('val', X_val), ('test', X_test)]
+            ],
+            floatfmt='.3f', intfmt='_', headers=['size', 'mean', 'std']
+        )
+    )
 
     # show each dataset distribution of labels in one histogram
     fig, axs = plt.subplots(1, 1, figsize=(10, 3))
+
     axs.hist([y_train, y_val, y_pool, y_test], bins=range(0, 11),
              density=True, label=['train', 'val', 'pool', 'test'])
     axs.axhline(y=0.1, color='r', linestyle='--', alpha=0.6)
+
     plt.xticks(np.linspace(0.5, 9.5, 10), np.arange(0, 10))
     plt.legend(loc='lower right')
     fig.suptitle('Label Distribution per Dataset', fontsize=16)
@@ -48,7 +57,7 @@ def visualise_experiments(experiment: dict) -> None:
     fig, axs = plt.subplots(2, 1, figsize=(10, 10))
 
     # if existent, get the calculated upper bounds for accuracy and information
-    # these are obtained by training on all 59_000 (1_000 val) training samples
+    # these are obtained by training on all 59_000 (-1_000 val) training samples
     for i, value in enumerate(['test_acc_ubound', 'test_inf_lbound']):
         if experiment[-1][value] is not None:
             bound = torch.mean(experiment[-1][value], dim=0)
@@ -101,10 +110,11 @@ def visualise_experiments(experiment: dict) -> None:
 
 
 def visualise_most_and_least_informative_samples(
-        vals, preds,
         X_data, y_data,
-        n_most=10, n_least=10)\
-        -> None:
+        vals,
+        preds,
+        n_most=10, n_least=10
+) -> None:
 
     most_informative_idx = torch.topk(torch.Tensor(vals), n_most).indices
     least_informative_idx = torch.topk(-torch.Tensor(vals), n_least).indices

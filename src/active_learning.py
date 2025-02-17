@@ -6,12 +6,13 @@ from src.training_and_testing import test_model, get_trained_model
 from src.acquisition_functions import get_info_and_predictions
 
 
-def perform_acquisition(infos,
-                        X_train, y_train,
-                        X_pool, y_pool,
-                        n_samples_to_acquire: int,
-                        subset_idx: int | None
-                        ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
+def perform_acquisition(
+        infos,
+        X_train, y_train,
+        X_pool, y_pool,
+        n_samples_to_acquire: int,
+        subset_idx: int | None
+) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
 
     # get indices of top n_samples_to_acquire elements of infos
     idx = torch.topk(torch.Tensor(infos), n_samples_to_acquire).indices
@@ -42,21 +43,22 @@ def perform_acquisition(infos,
     return new_X_train, new_y_train, new_X_pool, new_y_pool
 
 
-def run_active_learning(X_train, y_train,
-                        X_pool, y_pool,
-                        val_loader, test_loader,
-                        acquisition_function: callable,
-                        model_save_path_base: str,
+def run_active_learning(
+        X_train, y_train,
+        X_pool, y_pool,
+        val_loader, test_loader,
+        acquisition_function: callable,
+        model_save_path_base: str,
 
-                        n_acquisition_steps: int,
-                        n_samples_to_acquire: int,
-                        pool_subset_size: int,
-                        test_subset_size: int,
-                        num_mc_samples: int,
+        n_acquisition_steps: int,
+        n_samples_to_acquire: int,
+        pool_subset_size: int,
+        test_subset_size: int,
+        num_mc_samples: int,
 
-                        n_epochs: int,
-                        early_stopping: int,
-                        ) -> tuple[list, list]:
+        n_epochs: int,
+        early_stopping: int,
+) -> tuple[list, list]:
 
     acquisition_function_name = acquisition_function.__name__
     model_save_path_acq = model_save_path_base + f'{acquisition_function_name}/'
@@ -68,13 +70,18 @@ def run_active_learning(X_train, y_train,
     for _ in tqdm(range(n_acquisition_steps+1), leave=False,
                   desc=f'Acquisition Steps for {acquisition_function_name.replace("_", " ").title()}'):
 
-        model = get_trained_model(X_train, y_train,
-                                  val_loader=val_loader,
-                                  n_epochs=n_epochs,
-                                  early_stopping=early_stopping,
-                                  model_save_path_base=model_save_path_acq)
+        model = get_trained_model(
+            X_train, y_train,
+            val_loader=val_loader,
+            n_epochs=n_epochs,
+            early_stopping=early_stopping,
+            model_save_path_base=model_save_path_acq
+        )
 
-        inf, acc = test_model(model, test_loader, num_mc_samples, subset=test_subset_size, show_pbar=True)
+        inf, acc = test_model(
+            model, test_loader, num_mc_samples,
+            subset=test_subset_size, show_pbar=True
+        )
         test_inf.append(inf)
         test_acc.append(acc)
 

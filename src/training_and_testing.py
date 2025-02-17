@@ -8,15 +8,16 @@ from src.networks import LeNet
 from src.acquisition_functions import mutual_information, get_info_and_predictions
 
 
-def get_trained_model(X_train, y_train,
-                      val_loader: torch.utils.data.DataLoader,
-                      model_save_path_base: str,
-                      n_epochs: int = 100,
-                      early_stopping: int = 10
-                      ) -> LeNet:
+def get_trained_model(
+        X_train, y_train,
+        val_loader: torch.utils.data.DataLoader,
+        model_save_path_base: str,
+        n_epochs: int = 100,
+        early_stopping: int = 10
+) -> LeNet:
 
     train_set = torch.utils.data.TensorDataset(X_train, y_train)
-    train_loader = torch.utils.data.DataLoader(train_set, batch_size=len(train_set))
+    train_loader = torch.utils.data.DataLoader(train_set, batch_size=len(train_set), shuffle=False)
 
     model = LeNet()
     optimizer = torch.optim.AdamW(model.parameters(), lr=1e-3, weight_decay=1e-2)
@@ -80,12 +81,15 @@ def get_trained_model(X_train, y_train,
     return best_model
 
 
-def test_model(model: torch.nn.Module,
-               dataloader: torch.utils.data.DataLoader,
-               num_mc_samples,
-               subset: int | None,
-               show_pbar: bool = False
-               ) -> tuple[torch.Tensor, torch.Tensor]:
+def test_model(
+        model: torch.nn.Module,
+        dataloader: torch.utils.data.DataLoader,
+        num_mc_samples,
+        subset: int | None,
+        show_pbar: bool = False
+) -> tuple[torch.Tensor, torch.Tensor]:
+
+    dataloader.shuffle = False
 
     infos, predictions, subset_idx = get_info_and_predictions(
         model, dataloader,
@@ -106,26 +110,29 @@ def test_model(model: torch.nn.Module,
     return inf, acc
 
 
-def train_and_test_full_dataset(X_train, y_train,
-                                X_pool, y_pool,
-                                val_loader: torch.utils.data.DataLoader,
-                                test_loader: torch.utils.data.DataLoader,
-                                model_save_path: str,
-                                num_mc_samples: int,
-                                n_epochs: int,
-                                early_stopping: int,
-                                ) -> tuple[torch.Tensor, torch.Tensor]:
+def train_and_test_full_dataset(
+        X_train, y_train,
+        X_pool, y_pool,
+        val_loader: torch.utils.data.DataLoader,
+        test_loader: torch.utils.data.DataLoader,
+        model_save_path: str,
+        num_mc_samples: int,
+        n_epochs: int,
+        early_stopping: int,
+) -> tuple[torch.Tensor, torch.Tensor]:
 
     X_train_full = torch.cat([X_train, X_pool], 0)
     y_train_full = torch.cat([y_train, y_pool], 0)
 
     model_save_path = model_save_path + 'full_dataset/'
 
-    model = get_trained_model(X_train_full, y_train_full,
-                              val_loader=val_loader,
-                              model_save_path_base=model_save_path,
-                              n_epochs=n_epochs,
-                              early_stopping=early_stopping)
+    model = get_trained_model(
+        X_train_full, y_train_full,
+        val_loader=val_loader,
+        model_save_path_base=model_save_path,
+        n_epochs=n_epochs,
+        early_stopping=early_stopping
+    )
 
     inf, acc = test_model(model, test_loader, num_mc_samples, subset=None, show_pbar=True)
 

@@ -121,14 +121,14 @@ def get_experiment(
             # stores the results for each acquisition function
             'acq': {
                 func_name: {
-                    'test_inf': {},
-                    'test_acc': {}
+                    'test_inf': [],
+                    'test_acc': []
                 } for func_name in which_acq_funcs
             },
             # bounds are obtained by training on the full training set
             'bounds': {
-                'test_inf': {},
-                'test_acc': {}
+                'test_inf': [],
+                'test_acc': []
             },
             # stores the time taken for each run in seconds
             'time': None
@@ -174,8 +174,9 @@ def run_experiment(experiment):
     exp_save_path = exp_params['exp_save_path_base'] + exp_id + '.yaml'
 
     # get the bounds for accuracy and information when training on the full training set
-    set_seed(exp_params['seed'])
-    for i in range(exp_params['n_runs']):
+    for i in tqdm(range(exp_params['n_runs']), desc=f'Runs on Full Dataset'):
+        # we do this in every run to ensure that we start from a reproducible state
+        set_seed(exp_params['seed'] + i)
 
         # get dataset new for each run, such that train and pool is shuffled newly
         X_train, y_train, X_pool, y_pool, val_loader, test_loader \
@@ -194,8 +195,8 @@ def run_experiment(experiment):
             **experiment['params']['train']
         )
 
-        experiment['results']['bounds']['test_inf'][f'run_{i}'] = inf
-        experiment['results']['bounds']['test_acc'][f'run_{i}'] = acc
+        experiment['results']['bounds']['test_inf'].append(inf)
+        experiment['results']['bounds']['test_acc'].append(acc)
         save_experiment(experiment, exp_save_path)
 
     # perform active learning for each acquisition function
@@ -203,8 +204,11 @@ def run_experiment(experiment):
         acq_func = acq_funcs[acq_func_name]
 
         # for each experiment we perform three runs
-        set_seed(exp_params['seed'])
-        for i in tqdm(range(exp_params['n_runs']), desc='Runs', leave=False):
+        for i in tqdm(range(exp_params['n_runs']), leave=False,
+                      desc=f'Runs for {acq_func_name}'):
+
+            # we do this in every run to ensure that we start from a reproducible state
+            set_seed(exp_params['seed'] + i)
 
             # get dataset new for each run, such that train and pool is shuffled newly
             X_train, y_train, X_pool, y_pool, val_loader, test_loader \
@@ -223,8 +227,8 @@ def run_experiment(experiment):
                 **experiment['params']['train'],
             )
 
-            experiment['results']['acq'][acq_func_name]['test_inf'][f'run_{i}'] = inf
-            experiment['results']['acq'][acq_func_name]['test_acc'][f'run_{i}'] = acc
+            experiment['results']['acq'][acq_func_name]['test_inf'].append(inf)
+            experiment['results']['acq'][acq_func_name]['test_acc'].append(acc)
             experiment['results']['time'] = time() - start_time
             save_experiment(experiment, exp_save_path)
 

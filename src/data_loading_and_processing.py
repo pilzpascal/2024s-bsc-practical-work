@@ -4,9 +4,12 @@ import torch
 import torchvision
 
 
-def get_datasets(data_path, init_train_size: int, val_size: int
-                 ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor,
-                            torch.utils.data.DataLoader, torch.utils.data.DataLoader]:
+def get_datasets(
+        data_path,
+        init_train_size: int,
+        val_size: int
+) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor,
+           torch.utils.data.DataLoader, torch.utils.data.DataLoader]:
     """
     Loads the MNIST dataset and splits it into training, validation, and test sets.
 
@@ -48,8 +51,8 @@ def get_datasets(data_path, init_train_size: int, val_size: int
     # having batch size equal to the size of the dataset to get the whole dataset in one batch
     # enables us to get the whole dataset at once when iterating over the loader
     train_pool_loader = torch.utils.data.DataLoader(train_pool_set, batch_size=len(train_pool_set), shuffle=True)
-    val_loader = torch.utils.data.DataLoader(val_set, batch_size=len(val_set), shuffle=True)
-    test_loader = torch.utils.data.DataLoader(test_set, batch_size=len(test_set), shuffle=True)
+    val_loader = torch.utils.data.DataLoader(val_set, batch_size=len(val_set), shuffle=False)
+    test_loader = torch.utils.data.DataLoader(test_set, batch_size=len(test_set), shuffle=False)
 
     X_train_pool, y_train_pool = next(iter(train_pool_loader))
 
@@ -74,9 +77,10 @@ def get_datasets(data_path, init_train_size: int, val_size: int
     return X_train, y_train, X_pool, y_pool, val_loader, test_loader
 
 
-def get_subset(X: torch.Tensor | torch.utils.data.DataLoader | torch.utils.data.TensorDataset,
-               subset: int | list | np.ndarray)\
-        -> tuple[torch.Tensor, torch.Tensor]:
+def get_subset(
+        X: torch.Tensor | torch.utils.data.DataLoader | torch.utils.data.TensorDataset,
+        subset: int | list | np.ndarray
+) -> tuple[torch.Tensor, torch.Tensor]:
     """
     Selects a subset of data from a dataset or tensor.
 
