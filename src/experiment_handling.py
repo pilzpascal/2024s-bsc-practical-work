@@ -138,7 +138,7 @@ def get_experiment(
     return experiment
 
 
-def save_experiment(experiment, filename):
+def save_experiment(experiment: dict, filename: str) -> None:
 
     # convert numpy arrays to lists for YAML compatibility
     def _convert_numpy(obj):
@@ -160,17 +160,18 @@ def save_experiment(experiment, filename):
         yaml.dump(experiment, f, default_flow_style=False, sort_keys=False)
 
 
-def load_experiment(filename):
+def load_experiment(filename: str) -> dict:
     with open(filename, 'r') as f:
         return yaml.safe_load(f)
 
 
-def run_experiment(experiment):
+def run_experiment(experiment: dict) -> dict:
 
     start_time = time()
     exp_params = experiment['params']['exp']
 
     exp_id = datetime.now().strftime('%Y-%m-%d_%H-%M-%S')
+    experiment['params']['exp']['exp_id'] = exp_id
     exp_save_path = exp_params['exp_save_path_base'] + exp_id + '.yaml'
 
     # get the bounds for accuracy and information when training on the full training set
@@ -205,7 +206,7 @@ def run_experiment(experiment):
 
         # for each experiment we perform three runs
         for i in tqdm(range(exp_params['n_runs']), leave=False,
-                      desc=f'Runs for {acq_func_name}'):
+                      desc=f'Runs for {acq_func_name.replace("_", " ").title()}'):
 
             # we do this in every run to ensure that we start from a reproducible state
             set_seed(exp_params['seed'] + i)
