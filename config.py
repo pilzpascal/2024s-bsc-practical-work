@@ -3,9 +3,9 @@ This file contains experiment parameters. Standard parameters are written as com
 """
 
 WHICH_ACQ_FUNCS = [
-    'predictive_entropy',
-    'mutual_information',
-    'variation_ratios',
+    # 'predictive_entropy',
+    # 'mutual_information',
+    # 'variation_ratios',
     'mean_standard_deviation',
     'random',
 ]
@@ -27,5 +27,5 @@ TEST_SUBSET_SIZE = 3_000  # 3_000
 NUM_MC_SAMPLES = 64  # 64
 
 # Training parameters
-N_EPOCHS = 200  # 200
-EARLY_STOPPING = -1  # 50
+N_EPOCHS = 400  # 200
+EARLY_STOPPING = 50  # 50

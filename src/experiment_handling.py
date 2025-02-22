@@ -99,8 +99,9 @@ def get_experiment(
                 'train_size': train_size,
                 'val_size': val_size,
                 'data_path': data_path,
-                'exp_save_path_base': exp_save_path_base,
                 'model_save_path_base': model_save_path_base,
+                'exp_save_path_base': exp_save_path_base,
+                'exp_id': None  # store this after starting the experiment
             },
             # stored active learning parameters
             'al': {
@@ -210,6 +211,7 @@ def run_experiment(experiment: dict) -> dict:
 
             # we do this in every run to ensure that we start from a reproducible state
             set_seed(exp_params['seed'] + i)
+            model_save_path = exp_params['model_save_path_base'] + exp_id + f'/run-{i}/'
 
             # get dataset new for each run, such that train and pool is shuffled newly
             X_train, y_train, X_pool, y_pool, val_loader, test_loader \
@@ -217,7 +219,6 @@ def run_experiment(experiment: dict) -> dict:
                                init_train_size=exp_params['train_size'],
                                val_size=exp_params['val_size'])
 
-            model_save_path = exp_params['model_save_path_base'] + exp_id + f'/run-{i}/'
             inf, acc = run_active_learning(
                 X_train.clone(), y_train.clone(),
                 X_pool.clone(), y_pool.clone(),
