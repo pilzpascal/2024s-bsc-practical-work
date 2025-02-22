@@ -167,13 +167,18 @@ def visualise_epochs_before_early_stopping(
                 experiment['params']['exp']['model_save_path_base']
                 + f'{exp_id}/run-{i}/{acq_func}'
             )
+            # +1 because epochs start counting from 0
             epochs.append(
-                [int(file.split('_')[1].split('-')[1]) for file in sorted(files)]
+                [
+                    int(file.split('_')[1].split('-')[1]) + 1
+                    for file in sorted(files)
+                ]
             )
 
         # if we don't have results because the experiment stopped early we skip it
         try:
-            data = np.mean(epochs, axis=0)
+            epochs = np.array(epochs)
+            data = epochs.mean(axis=0)
         except ValueError:
             continue
         cumulative_sum = np.cumsum(np.insert(data, 0, 0))
@@ -181,6 +186,22 @@ def visualise_epochs_before_early_stopping(
 
         ax.plot(moving_average, label=acq_func.replace('_', ' ').title())
 
+    # plot the number of epochs trained for if using full dataset
+    files = []
+    for i in range(experiment['params']['exp']['n_runs']):
+        files += os.listdir(
+            experiment['params']['exp']['model_save_path_base']
+            + f'{exp_id}/run-{i}/full_dataset'
+        )
+
+    epochs = [
+        int(file.split('_')[1].split('-')[1]) + 1
+        for file in sorted(files)
+    ]
+    bound = np.mean(epochs)
+    ax.axhline(y=bound, color='grey', linestyle='--', label=f'Full Dataset ({int(bound)})')
+
+    ax.set_ylim(0, max_epochs * 1.05)
     ax.set_ylabel('Epochs')
     ax.set_title(f'Moving Average of Epochs before Early Stopping (max={max_epochs})')
     ax_label_helper(ax, train_size, n_acq_steps, n_samples_to_acquire)
