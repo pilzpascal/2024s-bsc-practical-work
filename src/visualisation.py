@@ -7,6 +7,32 @@ from matplotlib import pyplot as plt
 from tabulate import tabulate
 
 
+def get_number_of_samples_required_for_test_error(
+        experiment: dict,
+        target_accuracies: list[float]
+) -> dict:
+
+    train_size = experiment['params']['exp']['train_size']
+    n_samples_to_acquire = experiment['params']['al']['n_samples_to_acquire']
+    results = {}
+
+    for acq_func, data in experiment['results']['acq'].items():
+        results[acq_func] = {}
+
+        for target_accuracy in target_accuracies:
+
+            if len(data['test_acc']) == 0:
+                continue
+
+            acc = np.mean(data['test_acc'], axis=0)
+            n_acquisition_steps = np.argmax(acc > target_accuracy)
+            n_samples = n_acquisition_steps * n_samples_to_acquire + train_size
+
+            results[acq_func][target_accuracy] = n_samples
+
+    return results
+
+
 def ax_label_helper(
         ax: plt.Axes,
         train_size: int,
