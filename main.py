@@ -22,7 +22,7 @@ def main() -> dict:
         num_mc_samples=cfg.NUM_MC_SAMPLES,
 
         n_epochs=cfg.N_EPOCHS,
-        early_stopping=-1,
+        early_stopping=cfg.EARLY_STOPPING,
     )
 
     experiment_results = run_experiment(experiment)

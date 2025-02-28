@@ -78,7 +78,7 @@ def get_datasets(
 
 
 def get_subset(
-        X: torch.Tensor | torch.utils.data.DataLoader | torch.utils.data.TensorDataset,
+        X: torch.Tensor | torch.utils.data.DataLoader,
         subset: int | list | np.ndarray
 ) -> tuple[torch.Tensor, torch.Tensor]:
     """
@@ -86,7 +86,7 @@ def get_subset(
 
     Parameters
     ----------
-    X : torch.Tensor, torch.utils.data.DataLoader, or torch.utils.data.TensorDataset
+    X : torch.Tensor, torch.utils.data.DataLoader
         Input data, either as a PyTorch tensor or a DataLoader.
     subset : int, list, np.ndarray, or None
         - If int, randomly selects `subset` number of samples.
@@ -103,20 +103,23 @@ def get_subset(
 
     # ===== Handling of X =====
 
-    # if X is already a dataloader we convert it into a torch tensor
+    # if X is a dataloader we convert it into a torch tensor
     if isinstance(X, torch.utils.data.DataLoader):
-        X.shuffle = False
-        X = torch.concat([elem[0] for elem in iter(X)])
-
-    # if X is a dataset we convert it into a torch tensor
-    elif isinstance(X, torch.utils.data.TensorDataset):
-        X = X[:][0]
+        X = torch.utils.data.DataLoader(
+            X.dataset,
+            batch_size=len(X.dataset),
+            shuffle=False
+        )
+        X = next(iter(X))[0]
 
     # ===== Handling of subset =====
 
+    # number of samples
+    N = X.shape[0]
+
     # if subset is an int we randomly choose that many samples
     if isinstance(subset, int):
-        subset_idx = np.random.choice(range(X.shape[0]), size=subset, replace=False)
+        subset_idx = np.random.choice(range(N), size=subset, replace=False)
 
     # if subset is a list or numpy array we use that as indices
     elif isinstance(subset, list | np.ndarray):
@@ -124,7 +127,7 @@ def get_subset(
 
     # if subset is None we use all samples in order
     elif subset is None:
-        subset_idx = np.arange(X.shape[0])
+        subset_idx = np.arange(N)
 
     subset = X[subset_idx]
 

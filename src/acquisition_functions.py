@@ -1,3 +1,4 @@
+from pandas.io.formats.style import subset_args
 from tqdm.auto import tqdm
 
 import torch
@@ -7,45 +8,54 @@ import numpy as np
 from src.data_loading_and_processing import get_subset
 
 
-def predictive_entropy(tensor_outputs, eps=1e-10) -> torch.Tensor:  # (T, B, C)
-    mean_outputs = torch.mean(tensor_outputs, dim=0)  # mean over MC samples
-    entropy_mean = -torch.sum(mean_outputs * torch.log(mean_outputs + eps), dim=-1)  # -1 is class dim
-    return entropy_mean
+def predictive_entropy(outputs_mc, eps=1e-10) -> torch.Tensor:  # (T, B, C)
+    mean_outputs = outputs_mc.mean(dim=0)  # 0 is MC sample dim
 
-
-def mutual_information(tensor_outputs, eps=1e-10) -> torch.Tensor:  # (T, B, C)
-    mean_outputs = torch.mean(tensor_outputs, dim=0)  # mean over MC samples
-    entropy_mean = -torch.sum(mean_outputs * torch.log(mean_outputs + eps), dim=-1)  # -1 is class dim
-    mean_entropy = torch.mean(
-        torch.sum(tensor_outputs * torch.log(tensor_outputs + eps), dim=-1),  # -1 is class dim
-        dim=0
+    pred_entropy = -torch.sum(
+        mean_outputs * torch.log(mean_outputs + eps),
+        dim=-1  # -1 is class dim
     )
-    mutual_info = entropy_mean + mean_entropy
+
+    return pred_entropy
+
+
+def mutual_information(outputs_mc, eps=1e-10) -> torch.Tensor:  # (T, B, C)
+    pred_entropy = predictive_entropy(outputs_mc, eps=eps)
+
+    mean_entropy = torch.mean(
+        torch.sum(
+            outputs_mc * torch.log(outputs_mc + eps),
+            dim=-1  # -1 is class dim
+        ),
+        dim=0  # 0 is MC sample dim
+    )
+
+    mutual_info = pred_entropy + mean_entropy
     return mutual_info
 
 
-def variation_ratios(tensor_outputs) -> torch.Tensor:  # (T, B, C)
-    preds = tensor_outputs.argmax(dim=2).numpy()
-    _, counts = scipy.stats.mode(preds, axis=0)  # count of the most common class
-    N = preds.shape[0]  # total number of cases in all classes, T
+def variation_ratios(outputs_mc) -> torch.Tensor:  # (T, B, C)
+    preds = outputs_mc.argmax(dim=-1).numpy()  # -1 is class dim
+    _, counts = scipy.stats.mode(preds, axis=0)  # count of the most common class (mode)
+    N = preds.shape[1]  # total number of cases in all classes, T
     var_ratio = (1. - counts / N).squeeze()
     var_ratio = torch.Tensor(var_ratio)
     return var_ratio
 
 
-def mean_standard_deviation(tensor_outputs) -> torch.Tensor:  # (T, B, C)
-    stds = torch.std(tensor_outputs, dim=0)  # std over MC samples
-    mean_stds = torch.mean(stds, dim=-1)  # -1 is class dim
+def mean_standard_deviation(outputs_mc) -> torch.Tensor:  # (T, B, C)
+    stds = outputs_mc.std(dim=0)  # 0 is MC sample dim
+    mean_stds = stds.mean(dim=-1)  # -1 is class dim
     return mean_stds
 
 
-def random(tensor_outputs) -> torch.Tensor:  # (T, B, C)
-    return torch.rand(tensor_outputs.shape[1])  # 1 is batch dim
+def random(outputs_mc) -> torch.Tensor:  # (T, B, C)
+    return torch.rand(outputs_mc.shape[1])  # 1 is batch dim
 
 
 def get_info_and_predictions(
-        model,
-        data,
+        model: torch.nn.Module,
+        dataloader: torch.utils.data.DataLoader,
         acquisition_function: callable,
         subset: int | list | np.ndarray | None,
         num_mc_samples: int,
@@ -58,7 +68,7 @@ def get_info_and_predictions(
     ----------
     model : torch.nn.Module
         The model to use
-    data : torch.utils.data.DataLoader
+    dataloader : torch.Tensor
         The data to use
     acquisition_function : callable
         The acquisition function to use
@@ -76,23 +86,19 @@ def get_info_and_predictions(
         The information, predictions, and subset indices
     """
 
-    inputs, subset_idx = get_subset(data, subset)
+    subset_inputs, subset_idx = get_subset(dataloader, subset)
 
     model.eval()
     with torch.no_grad():
 
-        # Note: parallelizing this does not speed it up. I tested it.
-        list_outputs = []
+        # Note: parallelizing this by tiling the batch does not speed it up. I tested it.
+        subset_outputs_mc = []
         for _ in tqdm(range(num_mc_samples), disable=not show_pbar, desc='MC Dropout', leave=False):
-            list_outputs.append(
-                torch.softmax(
-                    model(inputs, use_dropout=True),
-                    dim=1
-                )
-            )
+            subset_outputs = model(subset_inputs, use_dropout=True)  # (B, C)
+            subset_outputs_mc.append(torch.softmax(subset_outputs, dim=1))
 
-    tensor_outputs = torch.stack(list_outputs, dim=0)
-    preds = torch.mean(tensor_outputs, dim=0).argmax(dim=1)
-    infos = acquisition_function(tensor_outputs)
+    subset_outputs_mc = torch.stack(subset_outputs_mc)  # (T, B, C)
+    preds = torch.mean(subset_outputs_mc, dim=0).argmax(dim=1)  # (T, B, C) -> (B, C) -> (B)
+    infos = acquisition_function(subset_outputs_mc)  # (T, B, C) -> (B)
 
     return infos, preds, subset_idx
