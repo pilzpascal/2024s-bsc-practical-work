@@ -28,7 +28,7 @@ def get_trained_model(
     best_model_state_dict = model.state_dict()
 
     os.makedirs(model_save_path_base, exist_ok=True)
-    model_save_path = model_save_path_base + f'trainsize-{len(train_loader.dataset):05d}_'
+    model_save_path = model_save_path_base + f'trainsize-{len(train_loader.dataset):05d}'
 
     epochs = tqdm(desc=f'Training Model with Training size {len(train_loader.dataset):_d}. Epoch', leave=False)
     if early_stopping == -1:
@@ -46,24 +46,23 @@ def get_trained_model(
             optimizer.step()
 
         # get validation loss
-        running_vloss = 0.0
         model.eval()
+        running_vloss = 0.0
         with torch.no_grad():
             for vinputs, vlabels in val_loader:
                 voutputs = model(vinputs, use_dropout=False)
                 vloss = loss_fn(voutputs, vlabels)
                 running_vloss += vloss
-
         avg_vloss = running_vloss / len(val_loader)
 
         # track the best performance, and save the model's state
         if avg_vloss < best_vloss:
             epochs_since_best_vloss = 0
             best_vloss = avg_vloss
-            save_path = model_save_path + f'epoch-{epoch:04d}_valloss-{best_vloss:.3f}'
+            save_path = model_save_path + f'_epoch-{epoch:04d}_valloss-{best_vloss:.3f}'
             best_model_state_dict = model.state_dict()
 
-        # Early stopping if no improvement for certain number of epochs
+        # Early stopping if no improvement for a certain number of epochs
         else:
             epochs_since_best_vloss += 1
             if epochs_since_best_vloss == early_stopping:
@@ -89,7 +88,11 @@ def test_model(
         show_pbar: bool = False
 ) -> tuple[torch.Tensor, torch.Tensor]:
 
-    dataloader.shuffle = False
+    dataloader = torch.utils.data.DataLoader(
+        dataloader.dataset,
+        batch_size=len(dataloader.dataset),
+        shuffle=False
+    )
 
     infos, predictions, subset_idx = get_info_and_predictions(
         model, dataloader,
@@ -103,7 +106,7 @@ def test_model(
     inf = torch.Tensor(infos).mean()
 
     # get accuracy
-    labels = torch.cat([y for _, y in dataloader], dim=0)[subset_idx]
+    labels = next(iter(dataloader))[1][subset_idx]
     predictions = torch.as_tensor(predictions)
     acc = (predictions == labels).float().mean()
 
@@ -121,8 +124,8 @@ def train_and_test_full_dataset(
         early_stopping: int,
 ) -> tuple[torch.Tensor, torch.Tensor]:
 
-    X_train_full = torch.cat([X_train, X_pool], 0)
-    y_train_full = torch.cat([y_train, y_pool], 0)
+    X_train_full = torch.cat([X_train, X_pool])
+    y_train_full = torch.cat([y_train, y_pool])
 
     model_save_path = model_save_path + 'full_dataset/'
 
