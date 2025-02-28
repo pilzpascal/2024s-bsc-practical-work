@@ -9,10 +9,10 @@ from src.data_loading_and_processing import get_subset
 
 
 def predictive_entropy(outputs_mc, eps=1e-10) -> torch.Tensor:  # (T, B, C)
-    mean_outputs = outputs_mc.mean(dim=0)  # 0 is MC sample dim
+    mean_mc = outputs_mc.mean(dim=0)  # 0 is MC sample dim
 
     pred_entropy = -torch.sum(
-        mean_outputs * torch.log(mean_outputs + eps),
+        mean_mc * torch.log(mean_mc + eps),
         dim=-1  # -1 is class dim
     )
 
@@ -37,7 +37,7 @@ def mutual_information(outputs_mc, eps=1e-10) -> torch.Tensor:  # (T, B, C)
 def variation_ratios(outputs_mc) -> torch.Tensor:  # (T, B, C)
     preds = outputs_mc.argmax(dim=-1).numpy()  # -1 is class dim
     _, counts = scipy.stats.mode(preds, axis=0)  # count of the most common class (mode)
-    N = preds.shape[1]  # total number of cases in all classes, T
+    N = preds.shape[0]  # total number of cases in all classes, T
     var_ratio = (1. - counts / N).squeeze()
     var_ratio = torch.Tensor(var_ratio)
     return var_ratio
