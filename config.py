@@ -3,9 +3,9 @@ This file contains experiment parameters. Standard parameters are written as com
 """
 
 WHICH_ACQ_FUNCS = [
-    # 'predictive_entropy',
-    # 'mutual_information',
-    # 'variation_ratios',
+    'predictive_entropy',
+    'mutual_information',
+    'variation_ratios',
     'mean_standard_deviation',
     'random',
 ]
