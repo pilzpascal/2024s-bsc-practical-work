@@ -7,7 +7,7 @@ def main() -> dict:
     # returns a list of experiments corresponding to the given acquisition functions and hyperparameters
     experiment = get_experiment(
         which_acq_funcs=cfg.WHICH_ACQ_FUNCS,
-        seed=cfg.SEED,
+        seed_sequence=cfg.SEED_SEQUENCE,
         n_runs=cfg.N_RUNS,
         train_size=cfg.TRAIN_SIZE,
         val_size=cfg.VAL_SIZE,

@@ -11,7 +11,7 @@ WHICH_ACQ_FUNCS = [
 ]
 
 # Experiment parameters
-SEED = 1  # 1
+SEED_SEQUENCE = [1, 2, 3]  # 1
 N_RUNS = 3  # 3
 TRAIN_SIZE = 20  # 20
 VAL_SIZE = 1_000  # 1_000

@@ -25,7 +25,7 @@ acq_funcs = {
 def get_experiment(
         # experiment parameters
         which_acq_funcs: list[str],
-        seed: int,
+        seed_sequence: list[int],
         n_runs: int,
         train_size: int,
         val_size: int,
@@ -51,8 +51,8 @@ def get_experiment(
     ----------
     which_acq_funcs : List[str]
         List of acquisition function names.
-    seed : int
-        Random seed for reproducibility.
+    seed_sequence : List[int]
+        List of random seeds for reproducibility. len(seed_sequence) == n_runs must be True
     n_runs : int
         Number of experiment repetitions.
     train_size : int
@@ -93,7 +93,7 @@ def get_experiment(
         'params': {
             'exp': {  # experiment parameters
                 'which_acq_funcs': which_acq_funcs,
-                'seed': seed,
+                'seed_sequence': seed_sequence,
                 'n_runs': n_runs,
                 'train_size': train_size,
                 'val_size': val_size,
@@ -172,7 +172,7 @@ def run_experiment(experiment: dict) -> dict:
     # get the bounds for accuracy and information when training on the full training set
     for i in tqdm(range(exp_params['n_runs']), desc=f'Runs on Full Dataset'):
         # we do this in every run to ensure that we start from a reproducible state
-        set_seed(exp_params['seed'] + i)
+        set_seed(exp_params['seed_sequence'][i])
 
         # get dataset new for each run, such that train and pool is shuffled newly
         X_train, y_train, X_pool, y_pool, val_loader, test_loader \
@@ -204,7 +204,7 @@ def run_experiment(experiment: dict) -> dict:
                       desc=f'Runs for {acq_func_name.replace("_", " ").title()}'):
 
             # we do this in every run to ensure that we start from a reproducible state
-            set_seed(exp_params['seed'] + i)
+            set_seed(exp_params['seed_sequence'][i])
             model_save_path = exp_params['model_save_path_base'] + exp_id + f'/run-{i}/'
 
             # get dataset new for each run, such that train and pool is shuffled newly
