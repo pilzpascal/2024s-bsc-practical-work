@@ -79,7 +79,8 @@ def run_active_learning(
         )
 
         inf, acc = test_model(
-            model, test_loader, num_mc_samples,
+            # always use 64 here bc we want to know the model's uncertainty
+            model, test_loader, num_mc_samples=64,
             subset=test_subset_size, show_pbar=True
         )
         test_inf.append(inf)
