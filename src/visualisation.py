@@ -236,6 +236,41 @@ def visualise_epochs_before_early_stopping(
     plt.show()
 
 
+def visualise_time_per_acquisition(
+        experiment: dict,
+) -> None:
+
+    # !!! Note that the time for testing cannot be factored out !!!
+
+    # we need +1 since for the first iteration we don't have an acquisition step yet
+    n_acq_steps = experiment['params']['al']['n_acquisition_steps'] + 1
+
+    fig, ax = plt.subplots(1, 1, figsize=(10, 5))
+
+    acq_funcs = [
+        elem.replace('_', ' ').title()
+        for elem in experiment['results']['acq'].keys()
+    ]
+    times = [
+        (elem['time'] / n_acq_steps) / 60
+        for elem in experiment['results']['acq'].values()
+    ]
+
+    ax.bar(acq_funcs, times)
+
+    ax.set_ylabel('time per step [minutes]')
+    ax.set_title(f'Time taken per Acquisition Step')
+    ax.yaxis.grid(True, linewidth=0.5)
+
+    ax.spines['top'].set_visible(False)
+    ax.spines['right'].set_visible(False)
+    ax.spines['left'].set_visible(False)
+    ax.spines['bottom'].set_visible(False)
+
+    fig.tight_layout()
+    plt.show()
+
+
 def visualise_most_and_least_informative_samples(
         X_data, y_data,
         vals,
