@@ -88,6 +88,9 @@ def get_experiment(
         A structured dictionary containing experiment parameters and placeholders for results.
     """
 
+    assert len(seed_sequence) == n_runs, 'Length of seed_sequence must be equal to n_runs'
+    exp_id = datetime.now().strftime('%Y-%m-%d_%H-%M-%S')
+
     experiment = {
 
         'params': {
@@ -100,7 +103,7 @@ def get_experiment(
                 'data_path': data_path,
                 'model_save_path_base': model_save_path_base,
                 'exp_save_path_base': exp_save_path_base,
-                'exp_id': None  # store this after starting the experiment
+                'exp_id': exp_id,
             },
             'al': {  # active learning parameters
                 'n_acquisition_steps': n_acquisition_steps,
@@ -119,14 +122,15 @@ def get_experiment(
             'acq': {  # results for each acquisition function
                 func_name: {
                     'test_inf': [],
-                    'test_acc': []
+                    'test_acc': [],
+                    'time': 0,
                 } for func_name in which_acq_funcs
             },
             'bounds': {  # bounds are obtained by training on the full training set
                 'test_inf': [],
-                'test_acc': []
+                'test_acc': [],
+                'time': 0,
             },
-            'time': None  # time taken for each run in seconds
         }
     }
 
@@ -162,15 +166,14 @@ def load_experiment(filename: str) -> dict:
 
 def run_experiment(experiment: dict) -> dict:
 
-    start_time = time()
     exp_params = experiment['params']['exp']
-
-    exp_id = datetime.now().strftime('%Y-%m-%d_%H-%M-%S')
-    experiment['params']['exp']['exp_id'] = exp_id
+    exp_id = exp_params['exp_id']
     exp_save_path = exp_params['exp_save_path_base'] + exp_id + '.yaml'
 
     # get the bounds for accuracy and information when training on the full training set
+    start_time = time()
     for i in tqdm(range(exp_params['n_runs']), desc=f'Runs on Full Dataset'):
+
         # we do this in every run to ensure that we start from a reproducible state
         set_seed(exp_params['seed_sequence'][i])
 
@@ -193,10 +196,12 @@ def run_experiment(experiment: dict) -> dict:
 
         experiment['results']['bounds']['test_inf'].append(inf)
         experiment['results']['bounds']['test_acc'].append(acc)
-        save_experiment(experiment, exp_save_path)
+    experiment['results']['bounds']['time'] = time() - start_time
+    save_experiment(experiment, exp_save_path)
 
     # perform active learning for each acquisition function
     for acq_func_name in tqdm(exp_params['which_acq_funcs'], desc='Experiments'):
+        start_time = time()
         acq_func = acq_funcs[acq_func_name]
 
         # for each experiment we perform three runs
@@ -225,7 +230,7 @@ def run_experiment(experiment: dict) -> dict:
 
             experiment['results']['acq'][acq_func_name]['test_inf'].append(inf)
             experiment['results']['acq'][acq_func_name]['test_acc'].append(acc)
-            experiment['results']['time'] = time() - start_time
-            save_experiment(experiment, exp_save_path)
+        experiment['results']['acq'][acq_func_name]['time'] = time() - start_time
+        save_experiment(experiment, exp_save_path)
 
     return experiment
