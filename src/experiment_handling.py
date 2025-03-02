@@ -91,8 +91,7 @@ def get_experiment(
     experiment = {
 
         'params': {
-            # stores experiment parameters
-            'exp': {
+            'exp': {  # experiment parameters
                 'which_acq_funcs': which_acq_funcs,
                 'seed': seed,
                 'n_runs': n_runs,
@@ -103,36 +102,31 @@ def get_experiment(
                 'exp_save_path_base': exp_save_path_base,
                 'exp_id': None  # store this after starting the experiment
             },
-            # stored active learning parameters
-            'al': {
+            'al': {  # active learning parameters
                 'n_acquisition_steps': n_acquisition_steps,
                 'n_samples_to_acquire': n_samples_to_acquire,
                 'pool_subset_size': pool_subset_size,
                 'test_subset_size': test_subset_size,
                 'num_mc_samples': num_mc_samples,
             },
-            # stored training parameters
-            'train': {
+            'train': {  # training parameters
                 'n_epochs': n_epochs,
                 'early_stopping': early_stopping,
             },
         },
 
         'results': {
-            # stores the results for each acquisition function
-            'acq': {
+            'acq': {  # results for each acquisition function
                 func_name: {
                     'test_inf': [],
                     'test_acc': []
                 } for func_name in which_acq_funcs
             },
-            # bounds are obtained by training on the full training set
-            'bounds': {
+            'bounds': {  # bounds are obtained by training on the full training set
                 'test_inf': [],
                 'test_acc': []
             },
-            # stores the time taken for each run in seconds
-            'time': None
+            'time': None  # time taken for each run in seconds
         }
     }
 
@@ -143,7 +137,7 @@ def save_experiment(experiment: dict, filename: str) -> None:
 
     # convert numpy arrays to lists for YAML compatibility
     def _convert_numpy(obj):
-        # convert arrays to lists
+        # convert np arrays and torch tensors to lists
         if isinstance(obj, np.ndarray) or isinstance(obj, torch.Tensor):
             return obj.tolist()
         # recursively convert dicts
@@ -152,7 +146,7 @@ def save_experiment(experiment: dict, filename: str) -> None:
         # recursively convert lists
         elif isinstance(obj, list):
             return [_convert_numpy(v) for v in obj]
-        # return as-is if not numpy
+        # otherwise return as-is
         return obj
 
     experiment = _convert_numpy(experiment)
