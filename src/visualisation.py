@@ -249,7 +249,7 @@ def visualise_time_per_acquisition(
 
     names, heights = [], []
     for key, value in experiment['results']['acq'].items():
-        names.append(key)
+        names.append(key.replace('_', ' ').title())
         heights.append((value['time'] / n_acq_steps) / 60)
 
     ax.bar(names, heights)
