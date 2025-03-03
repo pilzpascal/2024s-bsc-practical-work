@@ -247,16 +247,12 @@ def visualise_time_per_acquisition(
 
     fig, ax = plt.subplots(1, 1, figsize=(10, 5))
 
-    acq_funcs = [
-        elem.replace('_', ' ').title()
-        for elem in experiment['results']['acq'].keys()
-    ]
-    times = [
-        (elem['time'] / n_acq_steps) / 60
-        for elem in experiment['results']['acq'].values()
-    ]
+    names, heights = [], []
+    for key, value in experiment['results']['acq'].items():
+        names.append(key)
+        heights.append((value['time'] / n_acq_steps) / 60)
 
-    ax.bar(acq_funcs, times)
+    ax.bar(names, heights)
 
     ax.set_ylabel('time per step [minutes]')
     ax.set_title(f'Time taken per Acquisition Step')
