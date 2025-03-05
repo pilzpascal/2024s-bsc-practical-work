@@ -18,7 +18,7 @@ def get_trained_model(
 ) -> torch.nn.Module:
 
     train_set = torch.utils.data.TensorDataset(X_train, y_train)
-    train_loader = torch.utils.data.DataLoader(train_set, batch_size=len(train_set), shuffle=True)
+    train_loader = torch.utils.data.DataLoader(train_set, batch_size=min(1_024, len(train_set)), shuffle=True)
 
     # depending on the model, choose the correct network
     Model = LeNet if which_model == 'LeNet' else ConvNN
