@@ -34,7 +34,9 @@ class LeNet(nn.Module):
         return x
 
 
+# inspired from https://github.com/lunayht/DBALwithImgData/blob/main/cnn_model.py
 class ConvNN(nn.Module):
+
     def __init__(self):
         super(ConvNN, self).__init__()
         self.conv1 = nn.Conv2d(1, 32, 4, padding='same')
