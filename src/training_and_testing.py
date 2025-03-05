@@ -4,7 +4,7 @@ from tqdm.auto import tqdm
 import torch
 import numpy as np
 
-from src.networks import LeNet
+from src.networks import LeNet, ConvNN
 from src.acquisition_functions import mutual_information, get_info_and_predictions
 
 
@@ -12,14 +12,18 @@ def get_trained_model(
         X_train, y_train,
         val_loader: torch.utils.data.DataLoader,
         model_save_path_base: str,
-        n_epochs: int = 100,
-        early_stopping: int = 10
-) -> LeNet:
+        n_epochs: int,
+        early_stopping: int,
+        which_model: str
+) -> torch.nn.Module:
 
     train_set = torch.utils.data.TensorDataset(X_train, y_train)
-    train_loader = torch.utils.data.DataLoader(train_set, batch_size=len(train_set), shuffle=False)
+    train_loader = torch.utils.data.DataLoader(train_set, batch_size=len(train_set), shuffle=True)
 
-    model = LeNet()
+    # depending on the model, choose the correct network
+    Model = LeNet if which_model == 'LeNet' else ConvNN
+
+    model = Model()
     optimizer = torch.optim.AdamW(model.parameters(), lr=1e-3, weight_decay=1e-2)
     loss_fn = torch.nn.CrossEntropyLoss()
 
@@ -74,7 +78,7 @@ def get_trained_model(
     # save the best model, determined via validation set
     torch.save(best_model_state_dict, save_path)
 
-    best_model = LeNet()
+    best_model = Model()
     best_model.load_state_dict(best_model_state_dict)
 
     return best_model
@@ -122,6 +126,7 @@ def train_and_test_full_dataset(
         num_mc_samples: int,
         n_epochs: int,
         early_stopping: int,
+        which_model: str,
 ) -> tuple[torch.Tensor, torch.Tensor]:
 
     X_train_full = torch.cat([X_train, X_pool])
@@ -134,7 +139,8 @@ def train_and_test_full_dataset(
         val_loader=val_loader,
         model_save_path_base=model_save_path,
         n_epochs=n_epochs,
-        early_stopping=early_stopping
+        early_stopping=early_stopping,
+        which_model=which_model,
     )
 
     inf, acc = test_model(model, test_loader, num_mc_samples, subset=None, show_pbar=True)

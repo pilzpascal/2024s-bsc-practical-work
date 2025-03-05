@@ -58,6 +58,7 @@ def run_active_learning(
 
         n_epochs: int,
         early_stopping: int,
+        which_model: str
 ) -> tuple[list, list]:
 
     acquisition_function_name = acquisition_function.__name__
@@ -75,7 +76,8 @@ def run_active_learning(
             val_loader=val_loader,
             n_epochs=n_epochs,
             early_stopping=early_stopping,
-            model_save_path_base=model_save_path_acq
+            model_save_path_base=model_save_path_acq,
+            which_model=which_model,
         )
 
         inf, acc = test_model(

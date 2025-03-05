@@ -26,12 +26,13 @@ def get_experiment(
         # experiment parameters
         which_acq_funcs: list[str],
         seed_sequence: list[int],
+        run_on_full: bool,
         n_runs: int,
         train_size: int,
         val_size: int,
         data_path: str,
-        exp_save_path_base: str,
         model_save_path_base: str,
+        exp_save_path_base: str,
 
         # active learning parameters
         n_acquisition_steps: int,
@@ -43,6 +44,7 @@ def get_experiment(
         # training parameters
         n_epochs: int,
         early_stopping: int,
+        which_model: str,
 ) -> dict:
     """
     Initializes an experiment configuration dictionary.
@@ -53,6 +55,8 @@ def get_experiment(
         List of acquisition function names.
     seed_sequence : List[int]
         List of random seeds for reproducibility. len(seed_sequence) == n_runs must be True
+    run_on_full : bool
+        Whether to test on the full dataset.
     n_runs : int
         Number of experiment repetitions.
     train_size : int
@@ -61,10 +65,10 @@ def get_experiment(
         Number of validation samples.
     data_path : str
         Path to the dataset.
-    exp_save_path_base : str
-        Directory to save experiment results.
     model_save_path_base : str
         Path to save trained models.
+    exp_save_path_base : str
+        Directory to save experiment results.
 
     n_acquisition_steps : int
         Number of acquisition steps in active learning.
@@ -81,6 +85,9 @@ def get_experiment(
         Number of training epochs.
     early_stopping : int
         Early stopping patience.
+    which_model : str
+        Model to use for training and testing. Can either be LeNet or ConvNN.
+        LeNet is a simple CNN, ConvNN is a more complex CNN.
 
     Returns
     -------
@@ -89,6 +96,8 @@ def get_experiment(
     """
 
     assert len(seed_sequence) == n_runs, 'Length of seed_sequence must be equal to n_runs'
+    assert which_model in ['LeNet', 'ConvNN'], 'Model must be either LeNet or ConvNN'
+
     exp_id = datetime.now().strftime('%Y-%m-%d_%H-%M-%S')
 
     experiment = {
@@ -97,6 +106,7 @@ def get_experiment(
             'exp': {  # experiment parameters
                 'which_acq_funcs': which_acq_funcs,
                 'seed_sequence': seed_sequence,
+                'run_on_full': run_on_full,
                 'n_runs': n_runs,
                 'train_size': train_size,
                 'val_size': val_size,
@@ -115,6 +125,7 @@ def get_experiment(
             'train': {  # training parameters
                 'n_epochs': n_epochs,
                 'early_stopping': early_stopping,
+                'which_model': which_model,
             },
         },
 
@@ -171,33 +182,34 @@ def run_experiment(experiment: dict) -> dict:
     exp_save_path = exp_params['exp_save_path_base'] + exp_id + '.yaml'
 
     # get the bounds for accuracy and information when training on the full training set
-    start_time = time()
-    for i in tqdm(range(exp_params['n_runs']), desc=f'Runs on Full Dataset'):
+    if exp_params['run_on_full']:
+        start_time = time()
+        for i in tqdm(range(exp_params['n_runs']), desc=f'Runs on Full Dataset'):
+            model_save_path = exp_params['model_save_path_base'] + exp_id + f'/run-{i}/'
 
-        # we do this in every run to ensure that we start from a reproducible state
-        set_seed(exp_params['seed_sequence'][i])
+            # we do this in every run to ensure that we start from a reproducible state
+            set_seed(exp_params['seed_sequence'][i])
 
-        # get dataset new for each run, such that train and pool is shuffled newly
-        X_train, y_train, X_pool, y_pool, val_loader, test_loader \
-            = get_datasets(data_path=exp_params['data_path'],
-                           init_train_size=exp_params['train_size'],
-                           val_size=exp_params['val_size'])
+            # get dataset new for each run, such that train and pool is shuffled newly
+            X_train, y_train, X_pool, y_pool, val_loader, test_loader \
+                = get_datasets(data_path=exp_params['data_path'],
+                               init_train_size=exp_params['train_size'],
+                               val_size=exp_params['val_size'])
 
-        model_save_path = exp_params['model_save_path_base'] + exp_id + f'/run-{i}/'
-        inf, acc = train_and_test_full_dataset(
-            X_train, y_train,
-            X_pool, y_pool,
-            val_loader=val_loader,
-            test_loader=test_loader,
-            model_save_path=model_save_path,
-            num_mc_samples=experiment['params']['al']['num_mc_samples'],
-            **experiment['params']['train']
-        )
+            inf, acc = train_and_test_full_dataset(
+                X_train, y_train,
+                X_pool, y_pool,
+                val_loader=val_loader,
+                test_loader=test_loader,
+                model_save_path=model_save_path,
+                num_mc_samples=experiment['params']['al']['num_mc_samples'],
+                **experiment['params']['train']
+            )
 
-        experiment['results']['bounds']['test_inf'].append(inf)
-        experiment['results']['bounds']['test_acc'].append(acc)
-    experiment['results']['bounds']['time'] = time() - start_time
-    save_experiment(experiment, exp_save_path)
+            experiment['results']['bounds']['test_inf'].append(inf)
+            experiment['results']['bounds']['test_acc'].append(acc)
+        experiment['results']['bounds']['time'] = time() - start_time
+        save_experiment(experiment, exp_save_path)
 
     # perform active learning for each acquisition function
     for acq_func_name in tqdm(exp_params['which_acq_funcs'], desc='Experiments'):

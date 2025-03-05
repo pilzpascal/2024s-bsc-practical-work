@@ -8,6 +8,7 @@ def main() -> dict:
     experiment = get_experiment(
         which_acq_funcs=cfg.WHICH_ACQ_FUNCS,
         seed_sequence=cfg.SEED_SEQUENCE,
+        run_on_full=cfg.RUN_ON_FULL,
         n_runs=cfg.N_RUNS,
         train_size=cfg.TRAIN_SIZE,
         val_size=cfg.VAL_SIZE,
@@ -23,6 +24,7 @@ def main() -> dict:
 
         n_epochs=cfg.N_EPOCHS,
         early_stopping=cfg.EARLY_STOPPING,
+        which_model=cfg.WHICH_MODEL,
     )
 
     experiment_results = run_experiment(experiment)
