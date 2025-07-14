@@ -148,7 +148,22 @@ def get_experiment(
     return experiment
 
 
-def save_experiment(experiment: dict, filename: str) -> None:
+def save_experiment(experiment: dict, path: str) -> None:
+
+    """
+    Saves the experiment configuration and results to a YAML file.
+
+    Parameters
+    ----------
+    experiment : dict
+        The experiment dictionary containing parameters and results.
+    path : str
+        The path to the file where the experiment will be saved.
+
+    Returns
+    -------
+
+    """
 
     # convert numpy arrays to lists for YAML compatibility
     def _convert_numpy(obj):
@@ -166,16 +181,45 @@ def save_experiment(experiment: dict, filename: str) -> None:
 
     experiment = _convert_numpy(experiment)
 
-    with open(filename, 'w') as f:
+    with open(path, 'w') as f:
         yaml.dump(experiment, f, default_flow_style=False, sort_keys=False)
 
 
-def load_experiment(filename: str) -> dict:
-    with open(filename, 'r') as f:
+def load_experiment(path: str) -> dict:
+
+    """
+    Loads an experiment configuration and results from a YAML file.
+
+    Parameters
+    ----------
+    path : str
+        The path to the YAML file containing the experiment data.
+
+    Returns
+    -------
+
+    """
+
+    with open(path, 'r') as f:
         return yaml.safe_load(f)
 
 
 def run_experiment(experiment: dict) -> dict:
+
+    """
+    Runs the active learning experiment based on the provided configuration.
+
+    Parameters
+    ----------
+    experiment : dict
+        The experiment dictionary containing parameters and results.
+
+    Returns
+    -------
+    dict
+        The updated experiment dictionary with results after running the experiment.
+
+    """
 
     exp_params = experiment['params']['exp']
     exp_id = exp_params['exp_id']

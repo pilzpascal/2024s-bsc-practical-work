@@ -17,6 +17,30 @@ def get_trained_model(
         which_model: str
 ) -> torch.nn.Module:
 
+    """
+    Trains a model on the provided training data and saves the best model based on validation loss.
+
+    Parameters
+    ----------
+    X_train : torch.Tensor
+    y_train : torch.Tensor
+    val_loader : torch.utils.data.DataLoader
+    model_save_path_base : str
+        Base path where the model will be saved.
+    n_epochs : int
+        Number of epochs to train the model.
+    early_stopping : int
+        Number of epochs with no improvement on validation loss after which training will stop.
+    which_model : str
+        The type of model to train, either 'LeNet' or 'ConvNN'.
+
+    Returns
+    -------
+    torch.nn.Module
+        The trained model with the best validation loss.
+
+    """
+
     train_set = torch.utils.data.TensorDataset(X_train, y_train)
     train_loader = torch.utils.data.DataLoader(train_set, batch_size=min(1_024, len(train_set)), shuffle=True)
 

@@ -12,6 +12,28 @@ def get_number_of_samples_required_for_test_error(
         target_accuracies: list[float]
 ) -> dict:
 
+    """
+    Calculates the number of samples required to reach a certain target accuracy.
+    This is done by finding the first acquisition step where the test accuracy exceeds
+    the target accuracy and multiplying it with the number of samples to acquire.
+    The initial training size is added to the result to get the total number of samples.
+
+    Parameters
+    ----------
+    experiment : dict
+        The experiment dictionary containing parameters and results.
+    target_accuracies : list[float]
+        List of target accuracies to calculate the required number of samples for.
+
+    Returns
+    -------
+    dict
+        A dictionary with acquisition function names as keys and another dictionary
+        as values, where the inner dictionary contains target accuracies as keys
+        and the number of samples required to reach that accuracy as values.
+
+    """
+
     train_size = experiment['params']['exp']['train_size']
     n_samples_to_acquire = experiment['params']['al']['n_samples_to_acquire']
     results = {}
@@ -33,12 +55,29 @@ def get_number_of_samples_required_for_test_error(
     return results
 
 
-def ax_label_helper(
+def _ax_label_helper(
         ax: plt.Axes,
         train_size: int,
         n_acq_steps: int,
         n_samples_to_acquire: int
 ) -> None:
+
+    """
+    Helper function to set common parameters for the axes of the plots.
+
+    Parameters
+    ----------
+    ax : plt.Axes
+        The axes to set the parameters for.
+    train_size : int
+        The initial size of the training set.
+    n_acq_steps : int
+        The number of acquisition steps.
+
+    Returns
+    -------
+
+    """
 
     ax.spines['top'].set_visible(False)
     ax.spines['right'].set_visible(False)
@@ -61,6 +100,22 @@ def visualise_experiment_results(
         experiment: dict,
         which_measures: list[str]
 ) -> None:
+
+    """
+    Visualises the results of an experiment by plotting the test set accuracy and mutual information
+    for each acquisition function over the number of samples acquired.
+
+    Parameters
+    ----------
+    experiment : dict
+        The experiment dictionary containing parameters and results.
+    which_measures : list[str]
+        List of measures to plot. Can contain 'acc' for accuracy and 'inf' for mutual information.
+
+    Returns
+    -------
+
+    """
 
     assert all([w in ['acc', 'inf'] for w in which_measures]), 'Invalid value for which'
 
@@ -117,7 +172,7 @@ def visualise_experiment_results(
 
     # set plot parameters independent of what we plot
     for ax in axs:
-        ax_label_helper(ax, train_size, n_acq_steps, n_samples_to_acquire)
+        _ax_label_helper(ax, train_size, n_acq_steps, n_samples_to_acquire)
 
     plt.tight_layout(h_pad=5)
     plt.show()
@@ -129,6 +184,28 @@ def visualise_datasets(
         X_val, y_val,
         X_test, y_test
 ) -> None:
+
+    """
+    Visualises the datasets by showing their sizes, means, standard deviations,
+    and label distributions. It also displays images from the initial training set.
+    This function is useful for understanding the distribution and characteristics of the datasets
+    before starting the active learning process.
+
+    Parameters
+    ----------
+    X_train : torch.Tensor
+    y_train : torch.Tensor
+    X_pool : torch.Tensor
+    y_pool : torch.Tensor
+    X_val : torch.Tensor
+    y_val : torch.Tensor
+    X_test : torch.Tensor
+    y_test : torch.Tensor
+
+    Returns
+    -------
+
+    """
 
     # show each dataset size, mean, std in a nice table
     print(
@@ -172,6 +249,21 @@ def visualise_epochs_before_early_stopping(
         experiment: dict,
         window_width: int = 10
 ) -> None:
+
+    """
+    Visualises the number of epochs trained before early stopping for each acquisition function.
+
+    Parameters
+    ----------
+    experiment : dict
+        The experiment dictionary containing parameters and results.
+    window_width : int, optional
+        The width of the moving average window to smooth the number of epochs, by default 10.
+
+    Returns
+    -------
+
+    """
 
     # we need +1 since for the first iteration we don't have an acquisition step yet
     exp_id = experiment['params']['exp']['exp_id']
@@ -230,7 +322,7 @@ def visualise_epochs_before_early_stopping(
     ax.set_ylim(0, max_epochs * 1.05)
     ax.set_ylabel('Epochs')
     ax.set_title(f'Moving Average of Epochs before Early Stopping (max={max_epochs})')
-    ax_label_helper(ax, train_size, n_acq_steps, n_samples_to_acquire)
+    _ax_label_helper(ax, train_size, n_acq_steps, n_samples_to_acquire)
 
     fig.tight_layout()
     plt.show()
@@ -239,6 +331,19 @@ def visualise_epochs_before_early_stopping(
 def visualise_time_per_acquisition(
         experiment: dict,
 ) -> None:
+
+    """
+    Visualises the time taken per acquisition step for each acquisition function.
+
+    Parameters
+    ----------
+    experiment : dict
+        The experiment dictionary containing parameters and results.
+
+    Returns
+    -------
+
+    """
 
     # !!! Note that the time for testing cannot be factored out !!!
 
@@ -273,6 +378,25 @@ def visualise_most_and_least_informative_samples(
         preds,
         n_most=10, n_least=10
 ) -> None:
+
+    """
+    Visualises the most and least informative samples based on their mutual information values.
+
+    Parameters
+    ----------
+    X_data : torch.Tensor
+    y_data : torch.Tensor
+    vals : list[float]
+    preds : torch.Tensor
+    n_most : int, optional
+        The number of most informative samples to visualise, by default 10
+    n_least : int, optional
+        The number of least informative samples to visualise, by default 10
+
+    Returns
+    -------
+
+    """
 
     most_informative_idx = torch.topk(torch.Tensor(vals), n_most).indices
     least_informative_idx = torch.topk(-torch.Tensor(vals), n_least).indices

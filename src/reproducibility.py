@@ -4,7 +4,19 @@ import random
 
 
 def set_seed(seed: int) -> None:
-    """Set seed for reproducibility across multiple libraries."""
+
+    """
+    Sets the random seed for reproducibility across various libraries.
+    Parameters
+    ----------
+    seed : int
+        The seed value to set for random number generation.
+
+    Returns
+    -------
+
+    """
+
     random.seed(seed)  # Python
     np.random.seed(seed)  # NumPy
     torch.manual_seed(seed)  # PyTorch (CPU)
