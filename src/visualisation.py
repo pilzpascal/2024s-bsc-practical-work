@@ -7,52 +7,55 @@ from matplotlib import pyplot as plt
 from tabulate import tabulate
 
 
-def get_number_of_samples_required_for_test_error(
+def compute_samples_for_error(
         experiment: dict,
-        target_accuracies: list[float]
+        acc_thresholds: list[float]
 ) -> dict:
-
     """
-    Calculates the number of samples required to reach a certain target accuracy.
-    This is done by finding the first acquisition step where the test accuracy exceeds
-    the target accuracy and multiplying it with the number of samples to acquire.
-    The initial training size is added to the result to get the total number of samples.
+    Compute the number of samples required to reach specific error thresholds for each
+    acquisition function, including variability measures (mean and std across repetitions).
 
     Parameters
     ----------
     experiment : dict
-        The experiment dictionary containing parameters and results.
-    target_accuracies : list[float]
-        List of target accuracies to calculate the required number of samples for.
+        The experiment dictionary containing results.
+    acc_thresholds : list[float]
+        List of error thresholds (e.g., [0.10, 0.05] for 10% and 5%).
 
     Returns
     -------
-    dict
-        A dictionary with acquisition function names as keys and another dictionary
-        as values, where the inner dictionary contains target accuracies as keys
-        and the number of samples required to reach that accuracy as values.
-
+    results_summary : dict
+        Dictionary of the form:
+        {
+            'threshold': {
+                'acq_func': {'mean': value, 'std': value}
+            }
+        }
     """
 
     train_size = experiment['params']['exp']['train_size']
     n_samples_to_acquire = experiment['params']['al']['n_samples_to_acquire']
-    results = {}
+    results_summary = {}
 
-    for acq_func, data in experiment['results']['acq'].items():
-        results[acq_func] = {}
+    for threshold in acc_thresholds:
+        results_summary[threshold] = {}
 
-        for target_accuracy in target_accuracies:
+        for acq_func, results in experiment['results']['acq'].items():
+            acc_runs = np.array(results['test_acc'])
 
-            if len(data['test_acc']) == 0:
+            if len(acc_runs) == 0:
                 continue
 
-            acc = np.mean(data['test_acc'], axis=0)
-            n_acquisition_steps = np.argmax(acc > target_accuracy)
-            n_samples = n_acquisition_steps * n_samples_to_acquire + train_size
+            n_acq_steps = np.argmax(acc_runs > threshold, axis=1)
+            n_acq_steps_mean = np.nanmean(n_acq_steps)
+            n_acq_steps_std = np.nanstd(n_acq_steps)
 
-            results[acq_func][target_accuracy] = n_samples
+            results_summary[threshold][acq_func] = {
+                'mean': n_acq_steps_mean * n_samples_to_acquire + train_size,
+                'std': n_acq_steps_std * n_samples_to_acquire + train_size
+            }
 
-    return results
+    return results_summary
 
 
 def _ax_label_helper(
@@ -91,19 +94,19 @@ def _ax_label_helper(
             n_samples_to_acquire*(n_acq_steps-1), min(11, n_acq_steps)
         ).astype(int) + train_size
     )
-    ax.set_xlabel(f'Training Set Size (initial trian size={train_size})')
-    ax.grid(True, which='both', linestyle='--', linewidth=0.7)
+    ax.set_xlabel(f'Training set size (initial trian size={train_size})')
+    ax.grid(True, which='both', linestyle='--', linewidth=0.7, alpha=0.7)
     ax.legend()
 
 
 def visualise_experiment_results(
         experiment: dict,
-        which_measures: list[str]
+        which_measures: list[str],
+        save_path: str = None
 ) -> None:
-
     """
     Visualises the results of an experiment by plotting the test set accuracy and mutual information
-    for each acquisition function over the number of samples acquired.
+    for each acquisition function over the number of samples acquired, including shaded error regions.
 
     Parameters
     ----------
@@ -111,71 +114,81 @@ def visualise_experiment_results(
         The experiment dictionary containing parameters and results.
     which_measures : list[str]
         List of measures to plot. Can contain 'acc' for accuracy and 'inf' for mutual information.
-
-    Returns
-    -------
-
+    save_path : str, optional
+        If provided, saves the plot to the specified path instead of displaying it, by default None.
+        If None, the plot is not saved but is displayed.
     """
 
     assert all([w in ['acc', 'inf'] for w in which_measures]), 'Invalid value for which'
 
+    # Number of steps and sizes
     # we need +1 since for the first iteration we don't have an acquisition step yet
     train_size = experiment['params']['exp']['train_size']
     n_acq_steps = experiment['params']['al']['n_acquisition_steps'] + 1
     n_samples_to_acquire = experiment['params']['al']['n_samples_to_acquire']
 
-    fig, axs = plt.subplots(
-        len(which_measures), 1,
-        figsize=(10, 5 * len(which_measures))
-    )
+    fig, axs = plt.subplots(len(which_measures), 1, figsize=(10, 5 * len(which_measures)))
     axs = [axs] if not isinstance(axs, np.ndarray) else axs
 
-    # collect min and max values across acquisition functions
+    # Collect min and max values across acquisition functions
     min_y = np.inf
     max_y = -np.inf
 
-    # differentiate if we plot accuracy or mutual information
+    # Differentiate if we plot accuracy or mutual information
     for i, w in enumerate(which_measures):
-
-        # plot accuracy of mutual information for each acquisition functions
         for acq_func, results in experiment['results']['acq'].items():
 
-            # if we don't have results because the program stopped early we skip it
-            if len(results[f'test_{w}']) == 0:
+            if len(results[f'test_{w}']) == 0:  # Skip incomplete data
                 continue
 
-            if w == 'acc':
-                y = np.array(np.mean(results[f'test_{w}'], axis=0)) * 100
-                min_y = min(min_y, np.nanmin(y))
-            elif w == 'inf':
-                y = np.array(np.mean(results[f'test_{w}'], axis=0))
-                max_y = max(max_y, np.nanmax(y))
-            axs[i].plot(y, label=acq_func.replace('_', ' ').title())
+            # Compute mean and std across repetitions
+            y_mean = np.mean(results[f'test_{w}'], axis=0)
+            y_std = np.std(results[f'test_{w}'], axis=0)
 
-        # if existent, get the calculated bounds for accuracy and mutual information
-        # these are obtained by training on all 59_000 (-1_000 val) training samples
+            if w == 'acc':
+                y_mean = y_mean * 100
+                y_std = y_std * 100
+                min_y = min(min_y, np.nanmin(y_mean))
+            elif w == 'inf':
+                max_y = max(max_y, np.nanmax(y_mean))
+
+            steps = np.arange(len(y_mean))
+
+            # Plot mean curve
+            # axs[i].plot(steps, y_mean, label=acq_func.replace('_', ' ').title())
+            axs[i].plot(steps, y_mean, label=acq_func)
+
+            # Add shaded error region (mean ± std)
+            axs[i].fill_between(steps, y_mean - y_std, y_mean + y_std, alpha=0.2)
+
+        # Full dataset reference line
         results_bounds = experiment['results']['bounds'][f'test_{w}']
         bound = np.mean(results_bounds)
         bound = bound * 100 if w == 'acc' else bound
         axs[i].axhline(y=bound, color='grey', linestyle='--',
-                       label=f'Full Dataset ({bound:.2f})')
+                       label=f'Full dataset ({bound:.2f})')
 
-        # set y-axis labels and limits depending on if we plot accuracy or mutual information
+        # Y-axis labels and limits
         if w == 'acc':
-            axs[i].set_title('Test Set Accuracy')
+            axs[i].set_title('Test set accuracy')
             axs[i].set_ylabel('Accuracy [%]')
             axs[i].set_ylim(min_y * 0.9, 100)
         elif w == 'inf':
-            axs[i].set_title('Test Set Mutual Information')
-            axs[i].set_ylabel('Mutual Information')
+            axs[i].set_title('Test set mutual information')
+            axs[i].set_ylabel('Mutual information')
             axs[i].set_ylim(0, max_y * 1.2)
 
-    # set plot parameters independent of what we plot
     for ax in axs:
         _ax_label_helper(ax, train_size, n_acq_steps, n_samples_to_acquire)
 
     plt.tight_layout(h_pad=5)
-    plt.show()
+
+    if save_path:
+        os.makedirs(os.path.dirname(save_path), exist_ok=True)
+        image_save_path = os.path.join(save_path, '_'.join(which_measures) + '.pdf')
+        plt.savefig(image_save_path, format='pdf', dpi=300)
+    else:
+        plt.show()
 
 
 def visualise_datasets(
@@ -297,12 +310,22 @@ def visualise_epochs_before_early_stopping(
         try:
             epochs = np.array(epochs)
             data = epochs.mean(axis=0)
+            data_std = epochs.std(axis=0)
         except ValueError:
             continue
         cumulative_sum = np.cumsum(np.insert(data, 0, 0))
         moving_average = (cumulative_sum[window_width:] - cumulative_sum[:-window_width]) / window_width
 
+        cumulative_sum_std = np.cumsum(np.insert(data_std, 0, 0))
+        moving_std = (cumulative_sum_std[window_width:] - cumulative_sum_std[:-window_width]) / window_width
+
         ax.plot(moving_average, label=acq_func.replace('_', ' ').title())
+        ax.fill_between(
+            np.arange(len(moving_average)),
+            moving_average - moving_std,
+            moving_average + moving_std,
+            alpha=0.2
+        )
 
     # plot the number of epochs trained for if using full dataset
     files = []

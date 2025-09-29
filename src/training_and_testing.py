@@ -116,6 +116,33 @@ def test_model(
         show_pbar: bool = False
 ) -> tuple[torch.Tensor, torch.Tensor]:
 
+    """
+    Tests the model on the provided dataloader and computes the average mutual information
+    and accuracy of the predictions.
+
+    Parameters
+    ----------
+    model
+        The trained model to test.
+    dataloader : torch.utils.data.DataLoader
+        The dataloader containing the test data.
+    num_mc_samples : int
+        The number of Monte Carlo samples to use for uncertainty estimation.
+    subset : int | None
+        If an integer, specifies the number of samples to use from the dataloader.
+        If None, uses the entire dataset.
+    show_pbar : bool
+        Whether to show a progress bar during testing.
+
+    Returns
+    -------
+    tuple[torch.Tensor, torch.Tensor]
+        A tuple containing:
+        - inf: Average mutual information across the subset.
+        - acc: Accuracy of the model's predictions on the subset.
+
+    """
+
     dataloader = torch.utils.data.DataLoader(
         dataloader.dataset,
         batch_size=len(dataloader.dataset),
@@ -152,6 +179,37 @@ def train_and_test_full_dataset(
         early_stopping: int,
         which_model: str,
 ) -> tuple[torch.Tensor, torch.Tensor]:
+
+    """
+    Trains a model on the full dataset (combination of training and pool data) and tests it.
+
+    Parameters
+    ----------
+    X_train : torch.Tensor
+    y_train : torch.Tensor
+    X_pool : torch.Tensor
+    y_pool : torch.Tensor
+    val_loader : torch.utils.data.DataLoader
+    test_loader : torch.utils.data.DataLoader
+    model_save_path : str
+        Path where the model will be saved.
+    num_mc_samples : int
+        Number of Monte Carlo samples to use for uncertainty estimation.
+    n_epochs : int
+        Number of epochs to train the model.
+    early_stopping : int
+        Number of epochs with no improvement on validation loss after which training will stop.
+    which_model : str
+        The type of model to train, either 'LeNet' or 'ConvNN'.
+
+    Returns
+    -------
+    tuple[torch.Tensor, torch.Tensor]
+        A tuple containing:
+        - inf: Average mutual information across the full dataset.
+        - acc: Accuracy of the model's predictions on the test set.
+
+    """
 
     X_train_full = torch.cat([X_train, X_pool])
     y_train_full = torch.cat([y_train, y_pool])

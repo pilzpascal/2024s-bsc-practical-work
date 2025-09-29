@@ -14,6 +14,30 @@ def perform_acquisition(
         subset_idx: int | None
 ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
 
+    """
+    Performs the acquisition step by selecting samples based on the provided information scores.
+
+    Parameters
+    ----------
+    infos : torch.Tensor
+        Information scores for each sample in the pool.
+    X_train : torch.Tensor
+    y_train : torch.Tensor
+    X_pool : torch.Tensor
+    y_pool : torch.Tensor
+    n_samples_to_acquire : int
+        Number of samples to acquire from the pool.
+    subset_idx : int | None
+        Indices of the subset used to calculate infos.
+        If int, a random subset of that size is used. If None, the full pool is used.
+
+    Returns
+    -------
+    tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]
+        New training set (X_train, y_train) and new pool set (X_pool, y_pool) after acquisition.
+
+    """
+
     # get indices of top n_samples_to_acquire elements of infos
     idx = torch.topk(torch.Tensor(infos), n_samples_to_acquire).indices
 
