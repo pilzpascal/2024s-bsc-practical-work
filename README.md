@@ -1,8 +1,12 @@
 # Deep Active Learning for Image Data
 
+- Author: Pascal Pilz
+- Supervisor: Mykyta Ielanskyi
+- Based on Gal et al. [<a href="#ref1">1</a>]
+
 ## About this Repository
 
-This repository holds the **code**, **parameters**, and **results**, as well as the corresponding **report** for the experiments I conducted as part of the course "Practical Work in AI".
+This repository holds the **code**, **parameters**, and **results**, as well as the corresponding **report** for the experiments I conducted as part of my Practical Work in AI at the [Institute for Machine Learning](https://www.jku.at/en/institute-for-machine-learning/) at JKU, Linz.
 
 The point of the report is to reproduce the findings presented in Section 5.1 of Gal et al. [<a href="#ref1">1</a>]., i.e., to compare four uncertainty-based acquisition function to a random baseline, as well as to full-dataset training.
 
@@ -13,8 +17,6 @@ The following table holds a quick overview of the most important things:
 | Experiment Parameters and Results | `Experiment Results/2025-02-20_22-21-17.yaml`   |
 | Visualization of Results          | `Experiment Results and Plots.ipynb`            |
 | Report                            | _TODO_                                          |
-
----
 
 ## How to run
 
@@ -33,8 +35,6 @@ python main.py
 
 Parameters are passed via [`config.py`](config.py).
 For an explanation of the configurable parameters, see [Parameters](#parameters).
-
----
 
 ## Parameters
 
@@ -74,8 +74,6 @@ In order to run the experiments with different parameters, you need to change th
 | `N_EPOCHS` :: `int`       | Number of training epochs.                                                                                                                              |
 | `EARLY_STOPPING` :: `int` | Early stopping patience.                                                                                                                                |
 | `WHICH_MODEL` :: `str`    | Model to use for training and testing. Can either be `'LeNet'` or `'ConvNN'`. `'LeNet'` is a simple CNN, `'ConvNN'` is the one used by Gal et al. 2017. |
-
----
 
 ## References
 
