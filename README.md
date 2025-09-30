@@ -8,11 +8,11 @@ The point of the report is to reproduce the findings presented in Section 5.1 of
 
 The following table holds a quick overview of the most important things:
 
-| what                              | where                                                                                        |
-|-----------------------------------|----------------------------------------------------------------------------------------------|
-| Experiment Parameters and Results | [`Experiment Results/2025-02-20_22-21-17.yaml`](/Experiment Results/2025-02-20_22-21-17.yaml) |
-| Visualization of Results          | [`Experiment Results and Plots.ipynb`](Experiment Results and Plots.ipynb)                    |
-| Report                            | _TODO_                                                                                       |
+| what                              | where                                           |
+|-----------------------------------|-------------------------------------------------|
+| Experiment Parameters and Results | `Experiment Results/2025-02-20_22-21-17.yaml`   |
+| Visualization of Results          | `Experiment Results and Plots.ipynb`            |
+| Report                            | _TODO_                                          |
 
 ---
 
