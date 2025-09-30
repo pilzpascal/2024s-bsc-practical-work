@@ -33,6 +33,8 @@ conda activate al
 python main.py
 ```
 
+The results will be saved in a yaml file named after the data and time the experiment was started, and can be found in [`Experiment Results/<date-time>`](Experiment Results/).
+
 Parameters are passed via [`config.py`](config.py).
 For an explanation of the configurable parameters, see [Parameters](#parameters).
 
