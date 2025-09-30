@@ -34,6 +34,8 @@ def main() -> dict:
 
 if __name__ == '__main__':
 
+    print(f'Starting Active Learning experiments ...')
+
     results = main()
 
     print('Done!')
